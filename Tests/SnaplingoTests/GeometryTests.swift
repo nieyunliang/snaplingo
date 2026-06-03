@@ -43,8 +43,7 @@ final class GeometryTests: XCTestCase {
             toolbarSize: CGSize(width: 314, height: 50)
         )
 
-        XCTAssertEqual(toolbar, CGRect(x: 808, y: 425, width: 314, height: 50))
-        XCTAssertFalse(toolbar.intersects(selection))
+        assertToolbarLayout(toolbar: toolbar, expected: CGRect(x: 808, y: 425, width: 314, height: 50), visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900), selection: selection)
     }
 
     func testScreenshotToolbarStaysInsideVisibleFrameWhenSelectionAtRightEdge() {
@@ -56,9 +55,7 @@ final class GeometryTests: XCTestCase {
         )
 
         // Toolbar goes above the selection when right edge is tight
-        XCTAssertEqual(toolbar, CGRect(x: 1126, y: 42, width: 314, height: 50))
-        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1440, height: 900).contains(toolbar))
-        XCTAssertFalse(toolbar.intersects(selection))
+        assertToolbarLayout(toolbar: toolbar, expected: CGRect(x: 1126, y: 42, width: 314, height: 50), visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900), selection: selection)
     }
 
     func testScreenshotToolbarStaysInsideVisibleFrameWhenSelectionAtBottom() {
@@ -70,9 +67,7 @@ final class GeometryTests: XCTestCase {
         )
 
         // Toolbar goes above the selection when bottom space is tight
-        XCTAssertEqual(toolbar, CGRect(x: 143, y: 742, width: 314, height: 50))
-        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1440, height: 900).contains(toolbar))
-        XCTAssertFalse(toolbar.intersects(selection))
+        assertToolbarLayout(toolbar: toolbar, expected: CGRect(x: 143, y: 742, width: 314, height: 50), visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900), selection: selection)
     }
 
     func testScreenshotToolbarClampsToLeftEdgeWhenSelectionAtLeftEdge() {
@@ -84,9 +79,7 @@ final class GeometryTests: XCTestCase {
         )
 
         // Toolbar goes above and is clamped to the left edge (x = visibleFrame.minX)
-        XCTAssertEqual(toolbar, CGRect(x: 0, y: 42, width: 314, height: 50))
-        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1440, height: 900).contains(toolbar))
-        XCTAssertFalse(toolbar.intersects(selection))
+        assertToolbarLayout(toolbar: toolbar, expected: CGRect(x: 0, y: 42, width: 314, height: 50), visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900), selection: selection)
     }
 
     func testScreenshotToolbarFallsBackToVisibleCandidatesWhenNoNaturalPositionFits() {
@@ -266,6 +259,19 @@ final class GeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(candidate?.id, 1)
+    }
+
+    private func assertToolbarLayout(
+        toolbar: CGRect,
+        expected: CGRect,
+        visibleFrame: CGRect,
+        selection: CGRect,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(toolbar, expected, file: file, line: line)
+        XCTAssertTrue(visibleFrame.contains(toolbar), "Toolbar must be inside visible frame", file: file, line: line)
+        XCTAssertFalse(toolbar.intersects(selection), "Toolbar must not overlap selection", file: file, line: line)
     }
 
     private func mouseEvent(type: NSEvent.EventType, at point: CGPoint) throws -> NSEvent {

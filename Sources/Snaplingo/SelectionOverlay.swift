@@ -306,60 +306,6 @@ final class SelectionOverlayView: NSView {
         )
     }
 
-    private func showPreCaptureToolbar() {
-        guard toolbarHostingView == nil else {
-            updateToolbarPosition()
-            return
-        }
-        let toolbarView = ScreenshotToolbar(
-            state: .selecting(
-                onAction: { [weak self] action in
-                    self?.performAction(action)
-                },
-                onClose: { [weak self] in
-                    self?.completion(nil)
-                }
-            )
-        )
-        let hostingView = NSHostingView(rootView: toolbarView)
-        addSubview(hostingView)
-        toolbarHostingView = hostingView
-        updateToolbarPosition()
-    }
-
-    private func hidePreCaptureToolbar() {
-        toolbarHostingView?.removeFromSuperview()
-        toolbarHostingView = nil
-        pendingWindowCandidate = nil
-        selection = nil
-        needsDisplay = true
-    }
-
-    private func updateToolbarPosition() {
-        guard let selection else { return }
-        let screenSelection = CGRect(
-            x: selection.minX + screenFrame.minX,
-            y: selection.minY + screenFrame.minY,
-            width: selection.width,
-            height: selection.height
-        )
-        let screen = NSScreen.screens.first(where: { $0.frame.intersects(screenSelection) }) ?? NSScreen.main
-        guard let visibleFrame = screen?.visibleFrame else { return }
-        let toolbarSize = CGSize(width: min(ScreenshotToolbarLayout.maxToolbarWidth, visibleFrame.width), height: ScreenshotToolbarLayout.toolbarHeight)
-        let screenToolbarFrame = ScreenshotToolbarLayout.frame(
-            near: screenSelection,
-            visibleFrame: visibleFrame,
-            toolbarSize: toolbarSize
-        )
-        let localToolbarFrame = CGRect(
-            x: screenToolbarFrame.minX - screenFrame.minX,
-            y: screenToolbarFrame.minY - screenFrame.minY,
-            width: screenToolbarFrame.width,
-            height: screenToolbarFrame.height
-        )
-        toolbarHostingView?.frame = localToolbarFrame
-    }
-
     func performAction(_ action: CaptureAction) {
         guard !isCompleting else { return }
         guard let selection, SelectionGeometry.isValid(selection) else { return }
@@ -380,6 +326,64 @@ final class SelectionOverlayView: NSView {
                 action: action
             )
         )
+    }
+}
+
+// MARK: - Pre-Capture Toolbar
+
+extension SelectionOverlayView {
+    fileprivate func showPreCaptureToolbar() {
+        guard toolbarHostingView == nil else {
+            updateToolbarPosition()
+            return
+        }
+        let toolbarView = ScreenshotToolbar(
+            state: .selecting(
+                onAction: { [weak self] action in
+                    self?.performAction(action)
+                },
+                onClose: { [weak self] in
+                    self?.completion(nil)
+                }
+            )
+        )
+        let hostingView = NSHostingView(rootView: toolbarView)
+        addSubview(hostingView)
+        toolbarHostingView = hostingView
+        updateToolbarPosition()
+    }
+
+    fileprivate func hidePreCaptureToolbar() {
+        toolbarHostingView?.removeFromSuperview()
+        toolbarHostingView = nil
+        pendingWindowCandidate = nil
+        selection = nil
+        needsDisplay = true
+    }
+
+    fileprivate func updateToolbarPosition() {
+        guard let selection else { return }
+        let screenSelection = CGRect(
+            x: selection.minX + screenFrame.minX,
+            y: selection.minY + screenFrame.minY,
+            width: selection.width,
+            height: selection.height
+        )
+        let screen = NSScreen.screens.first(where: { $0.frame.intersects(screenSelection) }) ?? NSScreen.main
+        guard let visibleFrame = screen?.visibleFrame else { return }
+        let toolbarSize = ScreenshotToolbarLayout.size(fitting: visibleFrame)
+        let screenToolbarFrame = ScreenshotToolbarLayout.frame(
+            near: screenSelection,
+            visibleFrame: visibleFrame,
+            toolbarSize: toolbarSize
+        )
+        let localToolbarFrame = CGRect(
+            x: screenToolbarFrame.minX - screenFrame.minX,
+            y: screenToolbarFrame.minY - screenFrame.minY,
+            width: screenToolbarFrame.width,
+            height: screenToolbarFrame.height
+        )
+        toolbarHostingView?.frame = localToolbarFrame
     }
 }
 

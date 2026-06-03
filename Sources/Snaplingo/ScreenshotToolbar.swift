@@ -63,15 +63,20 @@ struct ScreenshotToolbar: View {
         }
     }
 
-    private var statusIcon: (systemImage: String, color: Color) {
+    private var statusIcon: ToolbarStatusIcon {
         switch state.statusKind {
         case .failure:
-            ("exclamationmark.circle.fill", .red)
+            ToolbarStatusIcon(systemImage: "exclamationmark.circle.fill", color: .red)
         case .info:
-            ("info.circle.fill", .blue)
+            ToolbarStatusIcon(systemImage: "info.circle.fill", color: .blue)
         case .success, nil:
-            ("checkmark.circle.fill", .green)
+            ToolbarStatusIcon(systemImage: "checkmark.circle.fill", color: .green)
         }
+    }
+
+    private struct ToolbarStatusIcon {
+        let systemImage: String
+        let color: Color
     }
 }
 
@@ -135,6 +140,10 @@ enum ScreenshotToolbarLayout {
     static let maxToolbarWidth: CGFloat = 430
     private static let spacing: CGFloat = 8
 
+    static func size(fitting visibleFrame: CGRect) -> CGSize {
+        CGSize(width: min(maxToolbarWidth, visibleFrame.width), height: toolbarHeight)
+    }
+
     static func frame(near screenshotRect: CGRect, visibleFrame: CGRect, toolbarSize: CGSize) -> CGRect {
         let centeredX = clamped(
             screenshotRect.midX - toolbarSize.width / 2,
@@ -146,22 +155,22 @@ enum ScreenshotToolbarLayout {
             minimum: visibleFrame.minY,
             maximum: visibleFrame.maxY - toolbarSize.height
         )
-        let candidates = [
+        let candidates: [CGRect] = [
             CGRect(x: centeredX, y: screenshotRect.minY - toolbarSize.height - spacing, width: toolbarSize.width, height: toolbarSize.height),
             CGRect(x: centeredX, y: screenshotRect.maxY + spacing, width: toolbarSize.width, height: toolbarSize.height),
             CGRect(x: screenshotRect.maxX + spacing, y: centeredY, width: toolbarSize.width, height: toolbarSize.height),
-            CGRect(x: screenshotRect.minX - toolbarSize.width - spacing, y: centeredY, width: toolbarSize.width, height: toolbarSize.height)
+            CGRect(x: screenshotRect.minX - toolbarSize.width - spacing, y: centeredY, width: toolbarSize.width, height: toolbarSize.height),
         ]
 
-        if let frame = candidates.first(where: { visibleFrame.contains($0) }) {
-            return frame
+        if let match = candidates.first(where: { visibleFrame.contains($0) }) {
+            return match
         }
 
-        let visibleCandidates = [
+        let visibleCandidates: [CGRect] = [
             CGRect(x: centeredX, y: visibleFrame.minY, width: toolbarSize.width, height: toolbarSize.height),
             CGRect(x: centeredX, y: visibleFrame.maxY - toolbarSize.height, width: toolbarSize.width, height: toolbarSize.height),
             CGRect(x: visibleFrame.maxX - toolbarSize.width, y: centeredY, width: toolbarSize.width, height: toolbarSize.height),
-            CGRect(x: visibleFrame.minX, y: centeredY, width: toolbarSize.width, height: toolbarSize.height)
+            CGRect(x: visibleFrame.minX, y: centeredY, width: toolbarSize.width, height: toolbarSize.height),
         ]
         return visibleCandidates.min {
             SelectionGeometry.intersectionArea(of: $0, with: screenshotRect)

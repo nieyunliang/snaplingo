@@ -19,7 +19,7 @@ struct InlineCaptureEditorLayout {
         let screen = NSScreen.screens.first(where: { $0.frame.intersects(screenshotRect) })
             ?? NSScreen.main
         let visible = screen?.visibleFrame ?? screenshotRect
-        let toolbarSize = CGSize(width: min(ScreenshotToolbarLayout.maxToolbarWidth, visible.width), height: ScreenshotToolbarLayout.toolbarHeight)
+        let toolbarSize = ScreenshotToolbarLayout.size(fitting: visible)
         return ScreenshotToolbarLayout.frame(
             near: screenshotRect,
             visibleFrame: visible,
