@@ -254,6 +254,37 @@ final class TranslationTests: XCTestCase {
     }
 
     @MainActor
+    func testInlineCaptureDocumentMarksMissingAPIKeyAsFailureStatus() async {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "SnaplingoTests-\(UUID().uuidString)")!)
+        settings.translationProvider = .deepSeek
+        settings.deepSeekAPIKey = "  "
+        let document = InlineCaptureDocument(
+            screenshot: ScreenshotResult(
+                image: makeSolidImage(.white, size: CGSize(width: 100, height: 60)),
+                screenRect: CGRect(x: 0, y: 0, width: 100, height: 60)
+            ),
+            settings: settings,
+            ocrService: OCRServiceStub(
+                result: OCRResult(
+                    text: "Hello",
+                    confidence: 1,
+                    blocks: [
+                        OCRTextBlock(text: "Hello", boundingBox: CGRect(x: 0, y: 0, width: 1, height: 1), confidence: 1)
+                    ]
+                )
+            ),
+            translationService: InlineTranslationService(),
+            clipboard: ClipboardServiceStub()
+        )
+
+        await document.toggleTranslation()
+
+        XCTAssertEqual(document.status, "请先在设置中配置 DeepSeek API Key。")
+        XCTAssertEqual(document.statusKind, .failure)
+        XCTAssertFalse(document.isTranslationVisible)
+    }
+
+    @MainActor
     func testInlineCaptureDocumentCanStartWithInitialDrawingTool() {
         let settings = AppSettings(defaults: UserDefaults(suiteName: "SnaplingoTests-\(UUID().uuidString)")!)
         let initialAnnotationTool = AnnotationTool.rectangle

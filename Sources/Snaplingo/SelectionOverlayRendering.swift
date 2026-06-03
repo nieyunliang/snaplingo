@@ -1,6 +1,8 @@
 import AppKit
 
 enum SelectionOverlayRenderer {
+    static let selectionChromeLineWidth: CGFloat = 2
+
     private static let magnifierDiameter: CGFloat = 116
     private static let magnifierZoom: CGFloat = 3
 
@@ -15,24 +17,35 @@ enum SelectionOverlayRenderer {
         dirtyRect.fill()
 
         if let selection {
-            drawSelection(selection)
+            NSGraphicsContext.current?.cgContext.clear(selection)
         }
 
         drawMagnifierIfNeeded(mouseLocation: mouseLocation, snapshot: snapshot, bounds: bounds)
     }
 
-    private static func drawSelection(_ selection: CGRect) {
-        NSGraphicsContext.current?.cgContext.clear(selection)
-        NSColor.systemBlue.withAlphaComponent(0.18).setFill()
-        selection.fill()
+    static func drawSelectionChrome(
+        in selection: CGRect,
+        showsFill: Bool = true,
+        showsHandles: Bool = true,
+        showsSizeLabel: Bool = true
+    ) {
+        if showsFill {
+            NSColor.systemBlue.withAlphaComponent(0.18).setFill()
+            selection.fill()
+        }
 
         NSColor.systemBlue.setStroke()
         let path = NSBezierPath(rect: selection)
-        path.lineWidth = 2
+        path.lineWidth = selectionChromeLineWidth
         path.stroke()
 
-        drawHandles(for: selection)
-        drawSizeLabel(for: selection)
+        if showsHandles {
+            drawHandles(for: selection)
+        }
+
+        if showsSizeLabel {
+            drawSizeLabel(for: selection)
+        }
     }
 
     private static func drawHandles(for rect: CGRect) {

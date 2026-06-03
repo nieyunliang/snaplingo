@@ -30,11 +30,12 @@ final class AppCoordinator {
         Task { @MainActor in
             do {
                 let candidates = try await captureService.listCapturableWindows()
-                overlayController.beginSelection(candidates: candidates) { [weak self] request in
+                overlayController.beginSelection(candidates: candidates) { [weak self] request, dismissSelection in
                     guard let self, let request else {
+                        dismissSelection()
                         return
                     }
-                    self.capture(request: request)
+                    self.capture(request: request, dismissSelection: dismissSelection)
                 }
             } catch {
                 presentError(error)
@@ -42,7 +43,7 @@ final class AppCoordinator {
         }
     }
 
-    private func capture(request: CaptureRequest) {
+    private func capture(request: CaptureRequest, dismissSelection: @escaping () -> Void) {
         Task { @MainActor in
             do {
                 let screenshot = try await captureService.capture(
@@ -51,13 +52,8 @@ final class AppCoordinator {
                 )
                 switch request.action {
                 case .finish:
-                    inlineCaptureEditorController.show(
-                        screenshot: screenshot,
-                        settings: settings,
-                        ocrService: ocrService,
-                        translationService: inlineTranslationService,
-                        clipboard: clipboard
-                    )
+                    clipboard.copyImage(screenshot.image)
+                    dismissSelection()
                 case .annotate(let tool):
                     inlineCaptureEditorController.show(
                         screenshot: screenshot,
@@ -67,6 +63,7 @@ final class AppCoordinator {
                         clipboard: clipboard,
                         initialDrawingTool: tool
                     )
+                    dismissSelection()
                 case .translate:
                     inlineCaptureEditorController.show(
                         screenshot: screenshot,
@@ -76,12 +73,13 @@ final class AppCoordinator {
                         clipboard: clipboard,
                         startsTranslation: true
                     )
-                case .copy:
-                    clipboard.copyImage(screenshot.image)
+                    dismissSelection()
                 case .save:
+                    dismissSelection()
                     _ = try ImageFileExporter.promptAndWritePNG(screenshot.image)
                 }
             } catch {
+                dismissSelection()
                 presentError(error)
             }
         }

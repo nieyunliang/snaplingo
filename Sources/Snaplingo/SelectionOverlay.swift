@@ -5,9 +5,12 @@ import SwiftUI
 @MainActor
 final class SelectionOverlayController {
     private var windows: [SelectionOverlayWindow] = []
-    private var completion: ((CaptureRequest?) -> Void)?
+    private var completion: ((CaptureRequest?, @escaping () -> Void) -> Void)?
 
-    func beginSelection(candidates: [WindowCaptureCandidate], completion: @escaping (CaptureRequest?) -> Void) {
+    func beginSelection(
+        candidates: [WindowCaptureCandidate],
+        completion: @escaping (CaptureRequest?, @escaping () -> Void) -> Void
+    ) {
         self.completion = completion
         let primaryFrame = NSScreen.primaryFrame
         windows = NSScreen.screens.compactMap { screen in
@@ -34,15 +37,33 @@ final class SelectionOverlayController {
 
     private func finish(_ request: CaptureRequest?) {
         NSCursor.pop()
+        let completion = completion
+        self.completion = nil
+
+        guard let request else {
+            dismissWindows()
+            completion?(nil, {})
+            return
+        }
+
+        guard let completion else {
+            dismissWindows()
+            return
+        }
+
+        for window in windows {
+            window.ignoresMouseEvents = true
+        }
+        completion(request) { [weak self] in
+            self?.dismissWindows()
+        }
+    }
+
+    private func dismissWindows() {
         for window in windows {
             window.orderOut(nil)
         }
         windows.removeAll()
-        let completion = completion
-        self.completion = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-            completion?(request)
-        }
     }
 }
 
@@ -89,12 +110,18 @@ final class SelectionOverlayView: NSView {
     private let snapshot: SelectionOverlaySnapshot?
     private let completion: (CaptureRequest?) -> Void
     private var trackingArea: NSTrackingArea?
+    private let selectionBorderView = SelectionBorderView()
     private var hovered: WindowCaptureCandidate?
     private var mouseLocation: CGPoint?
-    private var selection: CGRect?
+    private var selection: CGRect? {
+        didSet {
+            selectionBorderView.selection = selection
+        }
+    }
     private var dragMode: SelectionDragMode?
     private var pendingWindowCandidate: WindowCaptureCandidate?
-    private var toolbarHostingView: NSHostingView<PreCaptureToolbarView>?
+    private var toolbarHostingView: NSHostingView<ScreenshotToolbar>?
+    private var isCompleting = false
 
     init(
         frame frameRect: CGRect,
@@ -113,6 +140,9 @@ final class SelectionOverlayView: NSView {
         self.completion = completion
         super.init(frame: frameRect)
         wantsLayer = true
+        selectionBorderView.frame = bounds
+        selectionBorderView.autoresizingMask = [.width, .height]
+        addSubview(selectionBorderView)
     }
 
     @available(*, unavailable)
@@ -146,6 +176,7 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard !isCompleting else { return }
         let point = clamped(convert(event.locationInWindow, from: nil))
         mouseLocation = point
         hovered = selection == nil ? candidate(at: point) : nil
@@ -153,6 +184,7 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard !isCompleting else { return }
         let point = clamped(convert(event.locationInWindow, from: nil))
         mouseLocation = point
         hovered = nil
@@ -169,6 +201,7 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard !isCompleting else { return }
         guard let dragMode else {
             return
         }
@@ -205,6 +238,7 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        guard !isCompleting else { return }
         let point = clamped(convert(event.locationInWindow, from: nil))
         mouseLocation = point
         defer {
@@ -227,6 +261,7 @@ final class SelectionOverlayView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        guard !isCompleting else { return }
         if event.keyCode == 53 {
             completion(nil)
         } else {
@@ -276,13 +311,15 @@ final class SelectionOverlayView: NSView {
             updateToolbarPosition()
             return
         }
-        let toolbarView = PreCaptureToolbarView(
-            onAction: { [weak self] action in
-                self?.performAction(action)
-            },
-            onClose: { [weak self] in
-                self?.completion(nil)
-            }
+        let toolbarView = ScreenshotToolbar(
+            state: .selecting(
+                onAction: { [weak self] action in
+                    self?.performAction(action)
+                },
+                onClose: { [weak self] in
+                    self?.completion(nil)
+                }
+            )
         )
         let hostingView = NSHostingView(rootView: toolbarView)
         addSubview(hostingView)
@@ -324,7 +361,10 @@ final class SelectionOverlayView: NSView {
     }
 
     func performAction(_ action: CaptureAction) {
+        guard !isCompleting else { return }
         guard let selection, SelectionGeometry.isValid(selection) else { return }
+        isCompleting = true
+        window?.ignoresMouseEvents = true
         if let candidate = pendingWindowCandidate {
             completion(CaptureRequest(selection: .window(candidate), action: action))
         } else {

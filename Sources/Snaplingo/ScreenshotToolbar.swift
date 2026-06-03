@@ -1,80 +1,140 @@
 import SwiftUI
 
 struct ScreenshotToolbar: View {
-    @ObservedObject var document: InlineCaptureDocument
-    let close: () -> Void
+    let state: ScreenshotToolbarState
 
     var body: some View {
         ScreenshotToolbarSurface {
             ScreenshotToolbarButton(
                 systemImage: "arrow.up.right",
                 help: "箭头",
-                isActive: document.drawingTool == .arrow
+                isActive: state.selectedTool == .arrow
             ) {
-                document.toggleDrawingTool(.arrow)
+                state.selectTool(.arrow)
             }
             ScreenshotToolbarButton(
                 systemImage: "rectangle",
                 help: "矩形",
-                isActive: document.drawingTool == .rectangle
+                isActive: state.selectedTool == .rectangle
             ) {
-                document.toggleDrawingTool(.rectangle)
+                state.selectTool(.rectangle)
             }
             ScreenshotToolbarButton(
                 systemImage: "circle",
                 help: "圆形",
-                isActive: document.drawingTool == .circle
+                isActive: state.selectedTool == .circle
             ) {
-                document.toggleDrawingTool(.circle)
+                state.selectTool(.circle)
             }
             ScreenshotToolbarButton(
                 systemImage: "arrow.uturn.backward",
                 help: "撤销",
-                isDisabled: !document.canUndo
+                isDisabled: !state.canUndo
             ) {
-                document.undo()
+                state.undo()
             }
             ScreenshotToolbarButton(
                 systemImage: "character.book.closed",
                 help: "翻译",
-                showsProgress: document.isTranslating,
-                isActive: document.isTranslationVisible,
-                isDisabled: document.isTranslating
+                showsProgress: state.isTranslating,
+                isActive: state.isTranslationVisible,
+                isDisabled: state.isTranslating
             ) {
-                Task { await document.toggleTranslation() }
-            }
-            ScreenshotToolbarButton(systemImage: "doc.on.doc", help: "复制") {
-                document.copy()
+                state.toggleTranslation()
             }
             ScreenshotToolbarButton(systemImage: "square.and.arrow.down", help: "保存图片") {
-                document.save()
+                state.save()
             }
             ScreenshotToolbarDivider()
             ScreenshotToolbarButton(systemImage: "checkmark", help: "完成") {
-                document.copy()
-                close()
+                state.finish()
             }
-            ScreenshotToolbarButton(systemImage: "xmark", help: "关闭", action: close)
-            if !document.status.isEmpty {
+            ScreenshotToolbarButton(systemImage: "xmark", help: "关闭", action: state.close)
+            if !state.status.isEmpty {
                 Image(systemName: statusSystemImage)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(statusColor)
                     .frame(width: 22, height: 34)
-                    .help(document.status)
+                    .help(state.status)
             }
         }
     }
 
     private var statusSystemImage: String {
-        document.status.contains("失败") || document.status.contains("错误")
-            ? "exclamationmark.circle.fill"
-            : "checkmark.circle.fill"
+        switch state.statusKind {
+        case .failure:
+            "exclamationmark.circle.fill"
+        case .info:
+            "info.circle.fill"
+        case .success, nil:
+            "checkmark.circle.fill"
+        }
     }
 
     private var statusColor: Color {
-        document.status.contains("失败") || document.status.contains("错误")
-            ? .red
-            : .green
+        switch state.statusKind {
+        case .failure:
+            .red
+        case .info:
+            .blue
+        case .success, nil:
+            .green
+        }
+    }
+}
+
+struct ScreenshotToolbarState {
+    var selectedTool: AnnotationTool?
+    var canUndo = false
+    var isTranslating = false
+    var isTranslationVisible = false
+    var status = ""
+    var statusKind: InlineCaptureStatusKind?
+    let selectTool: (AnnotationTool) -> Void
+    let undo: () -> Void
+    let toggleTranslation: () -> Void
+    let save: () -> Void
+    let finish: () -> Void
+    let close: () -> Void
+
+    static func selecting(
+        onAction: @escaping (CaptureAction) -> Void,
+        onClose: @escaping () -> Void
+    ) -> ScreenshotToolbarState {
+        ScreenshotToolbarState(
+            selectTool: { onAction(.annotate($0)) },
+            undo: {},
+            toggleTranslation: { onAction(.translate) },
+            save: { onAction(.save) },
+            finish: { onAction(.finish) },
+            close: onClose
+        )
+    }
+
+    @MainActor
+    static func editing(
+        document: InlineCaptureDocument,
+        close: @escaping () -> Void
+    ) -> ScreenshotToolbarState {
+        ScreenshotToolbarState(
+            selectedTool: document.drawingTool,
+            canUndo: document.canUndo,
+            isTranslating: document.isTranslating,
+            isTranslationVisible: document.isTranslationVisible,
+            status: document.status,
+            statusKind: document.statusKind,
+            selectTool: { document.toggleDrawingTool($0) },
+            undo: { document.undo() },
+            toggleTranslation: {
+                Task { await document.toggleTranslation() }
+            },
+            save: { document.save() },
+            finish: {
+                document.copy()
+                close()
+            },
+            close: close
+        )
     }
 }
 
@@ -182,38 +242,5 @@ struct ScreenshotToolbarButton: View {
         .disabled(isDisabled)
         .help(help)
         .accessibilityLabel(help)
-    }
-}
-
-struct PreCaptureToolbarView: View {
-    let onAction: (CaptureAction) -> Void
-    let onClose: () -> Void
-
-    var body: some View {
-        ScreenshotToolbarSurface {
-            ScreenshotToolbarButton(systemImage: "arrow.up.right", help: "箭头") {
-                onAction(.annotate(.arrow))
-            }
-            ScreenshotToolbarButton(systemImage: "rectangle", help: "矩形") {
-                onAction(.annotate(.rectangle))
-            }
-            ScreenshotToolbarButton(systemImage: "circle", help: "圆形") {
-                onAction(.annotate(.circle))
-            }
-            ScreenshotToolbarButton(systemImage: "character.book.closed", help: "翻译") {
-                onAction(.translate)
-            }
-            ScreenshotToolbarButton(systemImage: "doc.on.doc", help: "复制") {
-                onAction(.copy)
-            }
-            ScreenshotToolbarButton(systemImage: "square.and.arrow.down", help: "保存图片") {
-                onAction(.save)
-            }
-            ScreenshotToolbarDivider()
-            ScreenshotToolbarButton(systemImage: "checkmark", help: "完成") {
-                onAction(.finish)
-            }
-            ScreenshotToolbarButton(systemImage: "xmark", help: "关闭", action: onClose)
-        }
     }
 }

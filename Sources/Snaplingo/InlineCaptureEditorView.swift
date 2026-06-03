@@ -8,11 +8,16 @@ struct InlineCaptureEditorView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            InlineCaptureCanvas(document: document)
+            InlineCaptureCanvas(
+                model: document.canvasModel,
+                beginDrawing: document.beginDrawing,
+                dragDrawing: document.dragDrawing,
+                endDrawing: document.endDrawing
+            )
                 .frame(width: screenshotFrame.width, height: screenshotFrame.height)
                 .position(x: screenshotFrame.midX, y: screenshotFrame.midY)
 
-            ScreenshotToolbar(document: document, close: close)
+            ScreenshotToolbar(state: .editing(document: document, close: close))
                 .frame(width: toolbarFrame.width, height: toolbarFrame.height)
                 .position(x: toolbarFrame.midX, y: toolbarFrame.midY)
         }

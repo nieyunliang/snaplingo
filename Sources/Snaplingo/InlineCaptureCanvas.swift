@@ -2,49 +2,53 @@ import AppKit
 import SwiftUI
 
 struct InlineCaptureCanvas: View {
-    @ObservedObject var document: InlineCaptureDocument
+    @ObservedObject var model: InlineCaptureCanvasModel
+    let beginDrawing: (CGPoint) -> Void
+    let dragDrawing: (CGPoint) -> Void
+    let endDrawing: (CGPoint) -> Void
 
     var body: some View {
         GeometryReader { proxy in
             let imageRect = CGRect(origin: .zero, size: proxy.size)
+            let borderInset = SelectionOverlayRenderer.selectionChromeLineWidth / 2
+            let borderRect = imageRect.insetBy(dx: borderInset, dy: borderInset)
             ZStack(alignment: .topLeading) {
-                Image(nsImage: document.renderedImage())
+                Image(nsImage: model.renderedImage)
                     .resizable()
                     .frame(width: proxy.size.width, height: proxy.size.height)
 
                 Canvas { context, _ in
-                    guard let draft = document.draftAnnotation else { return }
+                    guard let draft = model.draftAnnotation else { return }
                     context.withCGContext { cgContext in
                         NSGraphicsContext.saveGraphicsState()
                         NSGraphicsContext.current = NSGraphicsContext(cgContext: cgContext, flipped: false)
-                        AnnotationRenderer.drawPreview(draft, in: imageRect, imageSize: document.screenshot.image.size)
+                        AnnotationRenderer.drawPreview(draft, in: imageRect, imageSize: model.screenshot.image.size)
                         NSGraphicsContext.restoreGraphicsState()
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .contentShape(Rectangle())
-                .allowsHitTesting(document.drawingTool != nil)
+                .allowsHitTesting(model.drawingTool != nil)
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
                             let point = imagePoint(from: value.location, viewSize: proxy.size)
-                            if document.draftAnnotation == nil {
-                                document.beginDrawing(at: point)
+                            if model.draftAnnotation == nil {
+                                beginDrawing(point)
                             } else {
-                                document.dragDrawing(to: point)
+                                dragDrawing(point)
                             }
                         }
                         .onEnded { value in
-                            document.endDrawing(at: imagePoint(from: value.location, viewSize: proxy.size))
+                            endDrawing(imagePoint(from: value.location, viewSize: proxy.size))
                         }
                 )
+
+                SelectionBorderRepresentable(selection: borderRect)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .allowsHitTesting(false)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            .overlay {
-                Rectangle()
-                    .stroke(Color.accentColor, lineWidth: 2)
-                    .allowsHitTesting(false)
-            }
             .contentShape(Rectangle())
         }
     }
@@ -54,8 +58,8 @@ struct InlineCaptureCanvas: View {
             return .zero
         }
         return CGPoint(
-            x: point.x / viewSize.width * document.screenshot.image.size.width,
-            y: point.y / viewSize.height * document.screenshot.image.size.height
+            x: point.x / viewSize.width * model.screenshot.image.size.width,
+            y: point.y / viewSize.height * model.screenshot.image.size.height
         )
     }
 }

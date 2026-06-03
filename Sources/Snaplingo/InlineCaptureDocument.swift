@@ -4,13 +4,11 @@ import Combine
 @MainActor
 final class InlineCaptureDocument: ObservableObject {
     let screenshot: ScreenshotResult
-    @Published var annotations: [AnnotationItem] = []
-    @Published var draftAnnotation: AnnotationItem?
-    @Published var patches: [InlineTranslationPatch] = []
-    @Published var drawingTool: AnnotationTool?
+    let canvasModel: InlineCaptureCanvasModel
     @Published var isTranslating = false
     @Published var isTranslationVisible = false
-    @Published var status = ""
+    @Published private(set) var status = ""
+    @Published private(set) var statusKind: InlineCaptureStatusKind?
 
     private let settings: AppSettings
     private let ocrService: OCRServicing
@@ -19,6 +17,7 @@ final class InlineCaptureDocument: ObservableObject {
     private var dragStart: CGPoint?
     private var cachedOCRResult: OCRResult?
     private var cachedTranslationPatches: [InlineTranslationPatch]?
+    private var cancellables: Set<AnyCancellable> = []
 
     init(
         screenshot: ScreenshotResult,
@@ -30,58 +29,70 @@ final class InlineCaptureDocument: ObservableObject {
         startsTranslation: Bool = false
     ) {
         self.screenshot = screenshot
+        self.canvasModel = InlineCaptureCanvasModel(
+            screenshot: screenshot,
+            initialDrawingTool: initialDrawingTool
+        )
         self.settings = settings
         self.ocrService = ocrService
         self.translationService = translationService
         self.clipboard = clipboard
-        self.drawingTool = initialDrawingTool
+        canvasModel.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
         if startsTranslation {
             Task { await toggleTranslation() }
         }
     }
 
-    var canUndo: Bool { !annotations.isEmpty }
+    var annotations: [AnnotationItem] { canvasModel.annotations }
+    var draftAnnotation: AnnotationItem? { canvasModel.draftAnnotation }
+    var patches: [InlineTranslationPatch] { canvasModel.patches }
+    var drawingTool: AnnotationTool? { canvasModel.drawingTool }
+    var canUndo: Bool { canvasModel.canUndo }
 
     func toggleDrawingTool(_ tool: AnnotationTool) {
-        drawingTool = drawingTool == tool ? nil : tool
+        canvasModel.drawingTool = canvasModel.drawingTool == tool ? nil : tool
     }
 
     func beginDrawing(at point: CGPoint) {
-        guard let drawingTool else { return }
+        guard let drawingTool = canvasModel.drawingTool else { return }
         dragStart = point
-        draftAnnotation = makeAnnotation(tool: drawingTool, from: point, to: point)
+        canvasModel.draftAnnotation = makeAnnotation(tool: drawingTool, from: point, to: point)
     }
 
     func dragDrawing(to point: CGPoint) {
-        guard let dragStart, let drawingTool else { return }
-        draftAnnotation = makeAnnotation(tool: drawingTool, from: dragStart, to: point)
+        guard let dragStart, let drawingTool = canvasModel.drawingTool else { return }
+        canvasModel.draftAnnotation = makeAnnotation(tool: drawingTool, from: dragStart, to: point)
     }
 
     func endDrawing(at point: CGPoint) {
         dragDrawing(to: point)
-        if let draftAnnotation,
+        if let draftAnnotation = canvasModel.draftAnnotation,
            draftAnnotation.rect.width > 4 || draftAnnotation.rect.height > 4 {
-            annotations.append(draftAnnotation)
+            canvasModel.appendAnnotation(draftAnnotation)
         }
-        draftAnnotation = nil
+        canvasModel.draftAnnotation = nil
         dragStart = nil
     }
 
     func undo() {
-        _ = annotations.popLast()
+        canvasModel.removeLastAnnotation()
     }
 
     func toggleTranslation() async {
         guard !isTranslating else { return }
         if let cachedTranslationPatches {
             if isTranslationVisible {
-                patches = []
+                canvasModel.clearPatches()
                 isTranslationVisible = false
-                status = "已隐藏译文"
+                setStatus("已隐藏译文", kind: .success)
             } else {
-                patches = cachedTranslationPatches
+                canvasModel.setPatches(cachedTranslationPatches)
                 isTranslationVisible = true
-                status = translationVisibleStatus(for: cachedTranslationPatches)
+                setStatus(translationVisibleStatus(for: cachedTranslationPatches), kind: .success)
             }
             return
         }
@@ -91,42 +102,47 @@ final class InlineCaptureDocument: ObservableObject {
 
     func copy() {
         clipboard.copyImage(renderedImage())
-        status = "已复制图片"
+        setStatus("已复制图片", kind: .success)
     }
 
     func save() {
         do {
             if try ImageFileExporter.promptAndWritePNG(renderedImage()) {
-                status = "已保存图片"
+                setStatus("已保存图片", kind: .success)
             }
         } catch {
-            status = "保存失败：\(error.localizedDescription)"
+            setStatus("保存失败：\(error.localizedDescription)", kind: .failure)
         }
     }
 
     func renderedImage() -> NSImage {
-        InlineCaptureRenderer.render(image: screenshot.image, annotations: annotations, patches: patches)
+        canvasModel.renderedImageForExport()
     }
 
     private func translate() async {
         guard !isTranslating else { return }
         isTranslating = true
-        status = "正在识别文字..."
+        setStatus("正在识别文字...", kind: .info)
         defer { isTranslating = false }
         do {
             let ocr = try await recognizeText()
-            status = "正在请求 AI 翻译..."
+            setStatus("正在请求 AI 翻译...", kind: .info)
             let translationStartedAt = PerformanceMetrics.start()
             let patches = try await translationService.translate(blocks: ocr.blocks, imageSize: screenshot.image.size, settings: settings)
             PerformanceMetrics.log("inline_translation", since: translationStartedAt, metadata: "patches=\(patches.count)")
-            status = "正在覆盖译文..."
+            setStatus("正在覆盖译文...", kind: .info)
             cachedTranslationPatches = patches
-            self.patches = patches
+            canvasModel.setPatches(patches)
             isTranslationVisible = true
-            status = translationVisibleStatus(for: patches)
+            setStatus(translationVisibleStatus(for: patches), kind: .success)
         } catch {
-            status = error.localizedDescription
+            setStatus(error.localizedDescription, kind: .failure)
         }
+    }
+
+    private func setStatus(_ message: String, kind: InlineCaptureStatusKind) {
+        status = message
+        statusKind = kind
     }
 
     private func translationVisibleStatus(for patches: [InlineTranslationPatch]) -> String {
@@ -156,4 +172,10 @@ final class InlineCaptureDocument: ObservableObject {
             arrowEnd: tool == .arrow ? end : nil
         )
     }
+}
+
+enum InlineCaptureStatusKind: Equatable {
+    case info
+    case success
+    case failure
 }

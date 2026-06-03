@@ -15,7 +15,6 @@ enum CaptureAction {
     case finish
     case annotate(AnnotationTool)
     case translate
-    case copy
     case save
 }
 

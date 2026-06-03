@@ -26,7 +26,7 @@ The current app is centered on an in-place screenshot workflow:
 - Global screenshot hotkey: `Option + A`.
 - Unified screenshot selection overlay with drag-to-capture regions, click-to-capture highlighted windows, mouse magnifier, and `Esc` cancel.
 - ScreenCaptureKit-based region and window capture, with Retina and multi-display coordinate handling.
-- In-place floating screenshot editor with arrow, rectangle, and circle annotations, undo, inline translation toggle, copy, PNG save, finish, and close actions.
+- In-place floating screenshot editor with arrow, rectangle, and circle annotations, undo, inline translation toggle, PNG save, finish, and close actions.
 - Vision OCR with configurable recognition language codes. Fast recognition is tried first and low-confidence or empty results fall back to accurate recognition.
 - Inline Chinese translation over OCR text blocks. OCR and translation run only after the user clicks the translation action.
 - Translation options include DeepSeek-compatible Chat Completions, an offline dictionary/glossary replacement MVP, and local translation memory.

@@ -115,10 +115,13 @@ final class GeometryTests: XCTestCase {
 
         XCTAssertNil(completedRequest)
 
-        view.performAction(.copy)
+        view.performAction(.finish)
 
         guard case .region(let displayID, let rect)? = completedRequest?.selection else {
             return XCTFail("Expected region capture request.")
+        }
+        guard case .finish? = completedRequest?.action else {
+            return XCTFail("Expected finish action.")
         }
         XCTAssertEqual(displayID, 7)
         XCTAssertEqual(rect, CGRect(x: 10, y: 10, width: 50, height: 40))
@@ -144,7 +147,7 @@ final class GeometryTests: XCTestCase {
         view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 30, y: 60)))
         view.mouseDown(with: try mouseEvent(type: .leftMouseDown, at: CGPoint(x: 30, y: 60)))
         view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 30, y: 60)))
-        view.performAction(.copy)
+        view.performAction(.finish)
 
         guard case .window(let capturedCandidate)? = completedRequest?.selection else {
             return XCTFail("Expected window capture request.")
@@ -173,7 +176,7 @@ final class GeometryTests: XCTestCase {
         view.mouseDown(with: try mouseEvent(type: .leftMouseDown, at: CGPoint(x: 30, y: 60)))
         view.mouseDragged(with: try mouseEvent(type: .leftMouseDragged, at: CGPoint(x: 40, y: 60)))
         view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 40, y: 60)))
-        view.performAction(.copy)
+        view.performAction(.finish)
 
         guard case .region(let displayID, let rect)? = completedRequest?.selection else {
             return XCTFail("Expected adjusted window selection to become a region capture request.")
