@@ -57,6 +57,56 @@ final class RendererTests: XCTestCase {
         XCTAssertLessThan(cornerEnergy, 100)
     }
 
+    func testAnnotationRendererPreservesRetinaPixelDimensions() throws {
+        let image = try makeBitmapBackedImage(
+            pixelsWide: 80,
+            pixelsHigh: 40,
+            pointSize: CGSize(width: 40, height: 20)
+        )
+
+        let rendered = AnnotationRenderer.render(
+            image: image,
+            annotations: [
+                AnnotationItem(
+                    tool: .rectangle,
+                    rect: CGRect(x: 4, y: 4, width: 20, height: 10),
+                    colorHex: "#FFFFFF"
+                )
+            ]
+        )
+
+        var proposedRect = CGRect(origin: .zero, size: rendered.size)
+        let cgImage = try XCTUnwrap(rendered.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil))
+        XCTAssertEqual(rendered.size, CGSize(width: 40, height: 20))
+        XCTAssertEqual(cgImage.width, 80)
+        XCTAssertEqual(cgImage.height, 40)
+    }
+
+    func testInlineCaptureRendererPreservesRetinaPixelDimensionsWithTranslation() throws {
+        let image = try makeBitmapBackedImage(
+            pixelsWide: 120,
+            pixelsHigh: 80,
+            pointSize: CGSize(width: 60, height: 40)
+        )
+
+        let rendered = InlineCaptureRenderer.render(
+            image: image,
+            annotations: [],
+            patches: [
+                InlineTranslationPatch(
+                    translatedText: "文件",
+                    imageRect: CGRect(x: 8, y: 8, width: 30, height: 12)
+                )
+            ]
+        )
+
+        var proposedRect = CGRect(origin: .zero, size: rendered.size)
+        let cgImage = try XCTUnwrap(rendered.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil))
+        XCTAssertEqual(rendered.size, CGSize(width: 60, height: 40))
+        XCTAssertEqual(cgImage.width, 120)
+        XCTAssertEqual(cgImage.height, 80)
+    }
+
     func testAnnotationRendererStopsArrowShaftInsideArrowhead() {
         let end = CGPoint(x: 90, y: 20)
         let shaftEnd = AnnotationRenderer.arrowShaftEnd(
@@ -88,5 +138,35 @@ final class RendererTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(decoded.pixelsWide, 12)
         XCTAssertGreaterThanOrEqual(decoded.pixelsHigh, 8)
         XCTAssertEqual(Double(decoded.pixelsWide) / Double(decoded.pixelsHigh), 1.5, accuracy: 0.01)
+    }
+
+    private func makeBitmapBackedImage(
+        pixelsWide: Int,
+        pixelsHigh: Int,
+        pointSize: CGSize
+    ) throws -> NSImage {
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        bitmap.size = pointSize
+        let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+        let previous = NSGraphicsContext.current
+        NSGraphicsContext.current = context
+        NSColor.black.setFill()
+        CGRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh).fill()
+        NSGraphicsContext.current = previous
+
+        let image = NSImage(size: pointSize)
+        image.addRepresentation(bitmap)
+        return image
     }
 }

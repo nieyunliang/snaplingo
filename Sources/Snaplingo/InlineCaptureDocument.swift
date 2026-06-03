@@ -4,8 +4,6 @@ import Combine
 @MainActor
 final class InlineCaptureDocument: ObservableObject {
     let screenshot: ScreenshotResult
-    let locksRegionMovement: Bool
-    let startsTranslationOnAppear: Bool
     @Published var annotations: [AnnotationItem] = []
     @Published var draftAnnotation: AnnotationItem?
     @Published var patches: [InlineTranslationPatch] = []
@@ -29,17 +27,17 @@ final class InlineCaptureDocument: ObservableObject {
         translationService: InlineTranslationService,
         clipboard: ClipboardServicing,
         initialDrawingTool: AnnotationTool? = nil,
-        locksRegionMovement: Bool = false,
         startsTranslation: Bool = false
     ) {
         self.screenshot = screenshot
-        self.locksRegionMovement = locksRegionMovement
-        self.startsTranslationOnAppear = startsTranslation
         self.settings = settings
         self.ocrService = ocrService
         self.translationService = translationService
         self.clipboard = clipboard
         self.drawingTool = initialDrawingTool
+        if startsTranslation {
+            Task { await toggleTranslation() }
+        }
     }
 
     var canUndo: Bool { !annotations.isEmpty }

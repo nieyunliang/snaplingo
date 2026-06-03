@@ -3,14 +3,12 @@ import AppKit
 enum InlineCaptureRenderer {
     static func render(image: NSImage, annotations: [AnnotationItem], patches: [InlineTranslationPatch]) -> NSImage {
         let startedAt = PerformanceMetrics.start()
-        let translated = NSImage(size: image.size)
-        translated.lockFocus()
-        image.draw(in: CGRect(origin: .zero, size: image.size))
-        for patch in patches {
-            draw(patch, imageSize: image.size)
+        let rendered = ImageRenderContext.renderCopy(of: image) {
+            for patch in patches {
+                draw(patch, imageSize: image.size)
+            }
+            AnnotationRenderer.drawAnnotations(annotations, imageSize: image.size)
         }
-        translated.unlockFocus()
-        let rendered = AnnotationRenderer.render(image: translated, annotations: annotations)
         PerformanceMetrics.log(
             "inline_render",
             since: startedAt,

@@ -254,10 +254,9 @@ final class TranslationTests: XCTestCase {
     }
 
     @MainActor
-    func testInlineCaptureDocumentCanStartWithDrawingToolAndLockedMovement() {
+    func testInlineCaptureDocumentCanStartWithInitialDrawingTool() {
         let settings = AppSettings(defaults: UserDefaults(suiteName: "SnaplingoTests-\(UUID().uuidString)")!)
         let initialAnnotationTool = AnnotationTool.rectangle
-        let locksRegionMovement = true
         let document = InlineCaptureDocument(
             screenshot: ScreenshotResult(
                 image: makeSolidImage(.white, size: CGSize(width: 80, height: 60)),
@@ -269,8 +268,7 @@ final class TranslationTests: XCTestCase {
             ),
             translationService: InlineTranslationService(),
             clipboard: ClipboardServiceStub(),
-            initialDrawingTool: initialAnnotationTool,
-            locksRegionMovement: locksRegionMovement
+            initialDrawingTool: initialAnnotationTool
         )
 
         if case .rectangle? = document.drawingTool {
@@ -278,9 +276,8 @@ final class TranslationTests: XCTestCase {
         } else {
             XCTFail("Expected rectangle tool to be active.")
         }
-        XCTAssertTrue(document.locksRegionMovement)
-        XCTAssertFalse(document.startsTranslationOnAppear)
     }
+
 
     @MainActor
     func testVisionOCRRecognizesRenderedTextImage() async throws {

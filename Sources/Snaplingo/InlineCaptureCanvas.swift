@@ -3,11 +3,6 @@ import SwiftUI
 
 struct InlineCaptureCanvas: View {
     @ObservedObject var document: InlineCaptureDocument
-    let onMoveRegion: (CGSize) -> Void
-    let onMoveEnded: () -> Void
-
-    @State private var lastTranslation: CGSize = .zero
-    @State private var isDragging = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -51,32 +46,7 @@ struct InlineCaptureCanvas: View {
                     .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
-            .gesture(moveGesture)
         }
-    }
-
-    private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 3)
-            .onChanged { value in
-                guard document.drawingTool == nil, !document.locksRegionMovement else { return }
-                let delta = CGSize(
-                    width: value.translation.width - lastTranslation.width,
-                    height: value.translation.height - lastTranslation.height
-                )
-                onMoveRegion(delta)
-                lastTranslation = value.translation
-                if !isDragging { isDragging = true }
-            }
-            .onEnded { _ in
-                guard document.drawingTool == nil, !document.locksRegionMovement, isDragging else {
-                    lastTranslation = .zero
-                    isDragging = false
-                    return
-                }
-                lastTranslation = .zero
-                isDragging = false
-                onMoveEnded()
-            }
     }
 
     private func imagePoint(from point: CGPoint, viewSize: CGSize) -> CGPoint {

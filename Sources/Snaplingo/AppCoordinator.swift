@@ -20,13 +20,6 @@ final class AppCoordinator {
         hotkeyService.start(settings: settings) { [weak self] action in
             self?.performHotkeyAction(action)
         }
-        inlineCaptureEditorController.onCapture = { [weak self] rect, displayID in
-            guard let self else { throw AppError.captureFailed }
-            return try await self.captureService.capture(
-                selection: .region(displayID: displayID, appKitRect: rect),
-                includeWindowShadow: self.settings.includeWindowShadow
-            )
-        }
     }
 
     func capture() {
@@ -56,13 +49,38 @@ final class AppCoordinator {
                     selection: request.selection,
                     includeWindowShadow: settings.includeWindowShadow
                 )
-                inlineCaptureEditorController.show(
-                    screenshot: screenshot,
-                    settings: settings,
-                    ocrService: ocrService,
-                    translationService: inlineTranslationService,
-                    clipboard: clipboard
-                )
+                switch request.action {
+                case .finish:
+                    inlineCaptureEditorController.show(
+                        screenshot: screenshot,
+                        settings: settings,
+                        ocrService: ocrService,
+                        translationService: inlineTranslationService,
+                        clipboard: clipboard
+                    )
+                case .annotate(let tool):
+                    inlineCaptureEditorController.show(
+                        screenshot: screenshot,
+                        settings: settings,
+                        ocrService: ocrService,
+                        translationService: inlineTranslationService,
+                        clipboard: clipboard,
+                        initialDrawingTool: tool
+                    )
+                case .translate:
+                    inlineCaptureEditorController.show(
+                        screenshot: screenshot,
+                        settings: settings,
+                        ocrService: ocrService,
+                        translationService: inlineTranslationService,
+                        clipboard: clipboard,
+                        startsTranslation: true
+                    )
+                case .copy:
+                    clipboard.copyImage(screenshot.image)
+                case .save:
+                    _ = try ImageFileExporter.promptAndWritePNG(screenshot.image)
+                }
             } catch {
                 presentError(error)
             }

@@ -2,16 +2,15 @@ import AppKit
 
 enum AnnotationRenderer {
     static func render(image: NSImage, annotations: [AnnotationItem]) -> NSImage {
-        let output = NSImage(size: image.size)
-        output.lockFocus()
-        image.draw(in: CGRect(origin: .zero, size: image.size))
-
-        for annotation in annotations {
-            draw(renderingAnnotation(annotation, imageSize: image.size))
+        ImageRenderContext.renderCopy(of: image) {
+            drawAnnotations(annotations, imageSize: image.size)
         }
+    }
 
-        output.unlockFocus()
-        return output
+    static func drawAnnotations(_ annotations: [AnnotationItem], imageSize: CGSize) {
+        for annotation in annotations {
+            draw(renderingAnnotation(annotation, imageSize: imageSize))
+        }
     }
 
     static func drawPreview(_ annotation: AnnotationItem, in imageRect: CGRect, imageSize: CGSize) {

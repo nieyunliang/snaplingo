@@ -96,6 +96,92 @@ final class GeometryTests: XCTestCase {
         XCTAssertTrue(view.acceptsFirstMouse(for: nil))
     }
 
+    @MainActor
+    func testSelectionOverlayWaitsForToolbarActionAfterRegionDrag() throws {
+        var completedRequest: CaptureRequest?
+        let view = SelectionOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            screenFrame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            displayID: 7,
+            primaryFrame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            candidates: [],
+            snapshot: nil,
+            completion: { completedRequest = $0 }
+        )
+
+        view.mouseDown(with: try mouseEvent(type: .leftMouseDown, at: CGPoint(x: 10, y: 10)))
+        view.mouseDragged(with: try mouseEvent(type: .leftMouseDragged, at: CGPoint(x: 60, y: 50)))
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 60, y: 50)))
+
+        XCTAssertNil(completedRequest)
+
+        view.performAction(.copy)
+
+        guard case .region(let displayID, let rect)? = completedRequest?.selection else {
+            return XCTFail("Expected region capture request.")
+        }
+        XCTAssertEqual(displayID, 7)
+        XCTAssertEqual(rect, CGRect(x: 10, y: 10, width: 50, height: 40))
+    }
+
+    @MainActor
+    func testSelectionOverlayKeepsWindowCandidateWhenClickedWithoutDragging() throws {
+        let candidate = WindowCaptureCandidate(
+            id: 42,
+            frame: CGRect(x: 20, y: 20, width: 40, height: 30)
+        )
+        var completedRequest: CaptureRequest?
+        let view = SelectionOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            screenFrame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            displayID: 7,
+            primaryFrame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            candidates: [candidate],
+            snapshot: nil,
+            completion: { completedRequest = $0 }
+        )
+
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 30, y: 60)))
+        view.mouseDown(with: try mouseEvent(type: .leftMouseDown, at: CGPoint(x: 30, y: 60)))
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 30, y: 60)))
+        view.performAction(.copy)
+
+        guard case .window(let capturedCandidate)? = completedRequest?.selection else {
+            return XCTFail("Expected window capture request.")
+        }
+        XCTAssertEqual(capturedCandidate.id, candidate.id)
+    }
+
+    @MainActor
+    func testSelectionOverlayConvertsWindowCandidateToRegionAfterDraggingSelection() throws {
+        let candidate = WindowCaptureCandidate(
+            id: 42,
+            frame: CGRect(x: 20, y: 20, width: 40, height: 30)
+        )
+        var completedRequest: CaptureRequest?
+        let view = SelectionOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            screenFrame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            displayID: 7,
+            primaryFrame: CGRect(x: 0, y: 0, width: 100, height: 100),
+            candidates: [candidate],
+            snapshot: nil,
+            completion: { completedRequest = $0 }
+        )
+
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 30, y: 60)))
+        view.mouseDown(with: try mouseEvent(type: .leftMouseDown, at: CGPoint(x: 30, y: 60)))
+        view.mouseDragged(with: try mouseEvent(type: .leftMouseDragged, at: CGPoint(x: 40, y: 60)))
+        view.mouseUp(with: try mouseEvent(type: .leftMouseUp, at: CGPoint(x: 40, y: 60)))
+        view.performAction(.copy)
+
+        guard case .region(let displayID, let rect)? = completedRequest?.selection else {
+            return XCTFail("Expected adjusted window selection to become a region capture request.")
+        }
+        XCTAssertEqual(displayID, 7)
+        XCTAssertEqual(rect, CGRect(x: 30, y: 50, width: 40, height: 30))
+    }
+
     func testWindowCaptureCandidateResolverUsesFrontmostEnumerationOrder() {
         let candidates = [
             WindowCaptureCandidate(
@@ -115,5 +201,21 @@ final class GeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(candidate?.id, 1)
+    }
+
+    private func mouseEvent(type: NSEvent.EventType, at point: CGPoint) throws -> NSEvent {
+        try XCTUnwrap(
+            NSEvent.mouseEvent(
+                with: type,
+                location: point,
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
     }
 }

@@ -8,6 +8,15 @@ struct ScreenshotResult {
 
 struct CaptureRequest {
     let selection: CaptureSelection
+    let action: CaptureAction
+}
+
+enum CaptureAction {
+    case finish
+    case annotate(AnnotationTool)
+    case translate
+    case copy
+    case save
 }
 
 enum CaptureSelection {

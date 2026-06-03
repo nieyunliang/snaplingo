@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import SwiftUI
 
 @MainActor
 final class SelectionOverlayController {
@@ -92,6 +93,8 @@ final class SelectionOverlayView: NSView {
     private var mouseLocation: CGPoint?
     private var selection: CGRect?
     private var dragMode: SelectionDragMode?
+    private var pendingWindowCandidate: WindowCaptureCandidate?
+    private var toolbarHostingView: NSHostingView<PreCaptureToolbarView>?
 
     init(
         frame frameRect: CGRect,
@@ -159,6 +162,8 @@ final class SelectionOverlayView: NSView {
         } else {
             dragMode = .drawing(startPoint: point)
             selection = nil
+            pendingWindowCandidate = nil
+            hidePreCaptureToolbar()
         }
         needsDisplay = true
     }
@@ -173,6 +178,7 @@ final class SelectionOverlayView: NSView {
         case .drawing(let startPoint):
             if CaptureGestureResolver.isRegionDrag(from: startPoint, to: point, threshold: Self.dragThreshold) {
                 selection = SelectionGeometry.normalizedRect(from: startPoint, to: point)
+                pendingWindowCandidate = nil
             }
         case .adjusting(let initialSelection, let handle, let startPoint):
             if handle == .inside {
@@ -190,6 +196,10 @@ final class SelectionOverlayView: NSView {
                 )
             }
             hovered = nil
+            pendingWindowCandidate = nil
+            if toolbarHostingView != nil {
+                updateToolbarPosition()
+            }
         }
         needsDisplay = true
     }
@@ -203,12 +213,16 @@ final class SelectionOverlayView: NSView {
         }
 
         if let selection, SelectionGeometry.isValid(selection) {
-            completeRegion(selection)
+            showPreCaptureToolbar()
             return
         }
 
         if let candidate = candidate(at: point) {
-            completion(CaptureRequest(selection: .window(candidate)))
+            let rect = localRect(for: candidate.appKitFrame(primaryFrame: primaryFrame))
+            selection = rect
+            pendingWindowCandidate = candidate
+            showPreCaptureToolbar()
+            return
         }
     }
 
@@ -257,11 +271,73 @@ final class SelectionOverlayView: NSView {
         )
     }
 
-    private func completeRegion(_ selection: CGRect) {
+    private func showPreCaptureToolbar() {
+        guard toolbarHostingView == nil else {
+            updateToolbarPosition()
+            return
+        }
+        let toolbarView = PreCaptureToolbarView(
+            onAction: { [weak self] action in
+                self?.performAction(action)
+            },
+            onClose: { [weak self] in
+                self?.completion(nil)
+            }
+        )
+        let hostingView = NSHostingView(rootView: toolbarView)
+        addSubview(hostingView)
+        toolbarHostingView = hostingView
+        updateToolbarPosition()
+    }
+
+    private func hidePreCaptureToolbar() {
+        toolbarHostingView?.removeFromSuperview()
+        toolbarHostingView = nil
+        pendingWindowCandidate = nil
+        selection = nil
+        needsDisplay = true
+    }
+
+    private func updateToolbarPosition() {
+        guard let selection else { return }
+        let screenSelection = CGRect(
+            x: selection.minX + screenFrame.minX,
+            y: selection.minY + screenFrame.minY,
+            width: selection.width,
+            height: selection.height
+        )
+        let screen = NSScreen.screens.first(where: { $0.frame.intersects(screenSelection) }) ?? NSScreen.main
+        guard let visibleFrame = screen?.visibleFrame else { return }
+        let toolbarSize = CGSize(width: min(430, visibleFrame.width), height: 50)
+        let screenToolbarFrame = ScreenshotToolbarLayout.frame(
+            near: screenSelection,
+            visibleFrame: visibleFrame,
+            toolbarSize: toolbarSize
+        )
+        let localToolbarFrame = CGRect(
+            x: screenToolbarFrame.minX - screenFrame.minX,
+            y: screenToolbarFrame.minY - screenFrame.minY,
+            width: screenToolbarFrame.width,
+            height: screenToolbarFrame.height
+        )
+        toolbarHostingView?.frame = localToolbarFrame
+    }
+
+    func performAction(_ action: CaptureAction) {
+        guard let selection, SelectionGeometry.isValid(selection) else { return }
+        if let candidate = pendingWindowCandidate {
+            completion(CaptureRequest(selection: .window(candidate), action: action))
+        } else {
+            completeRegion(selection, action: action)
+        }
+    }
+
+    private func completeRegion(_ selection: CGRect, action: CaptureAction) {
         let appKitRect = window?.convertToScreen(selection) ?? selection.offsetBy(dx: screenFrame.minX, dy: screenFrame.minY)
         completion(
             CaptureRequest(
-                selection: .region(displayID: displayID, appKitRect: appKitRect)
+                selection: .region(displayID: displayID, appKitRect: appKitRect),
+                action: action
             )
         )
     }

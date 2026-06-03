@@ -120,7 +120,7 @@ enum ScreenshotToolbarLayout {
     }
 }
 
-private struct ScreenshotToolbarSurface<Content: View>: View {
+struct ScreenshotToolbarSurface<Content: View>: View {
     private let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -142,7 +142,7 @@ private struct ScreenshotToolbarSurface<Content: View>: View {
     }
 }
 
-private struct ScreenshotToolbarDivider: View {
+struct ScreenshotToolbarDivider: View {
     var body: some View {
         Divider()
             .frame(height: 20)
@@ -150,7 +150,7 @@ private struct ScreenshotToolbarDivider: View {
     }
 }
 
-private struct ScreenshotToolbarButton: View {
+struct ScreenshotToolbarButton: View {
     let systemImage: String
     let help: String
     var showsProgress = false
@@ -182,5 +182,38 @@ private struct ScreenshotToolbarButton: View {
         .disabled(isDisabled)
         .help(help)
         .accessibilityLabel(help)
+    }
+}
+
+struct PreCaptureToolbarView: View {
+    let onAction: (CaptureAction) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        ScreenshotToolbarSurface {
+            ScreenshotToolbarButton(systemImage: "arrow.up.right", help: "箭头") {
+                onAction(.annotate(.arrow))
+            }
+            ScreenshotToolbarButton(systemImage: "rectangle", help: "矩形") {
+                onAction(.annotate(.rectangle))
+            }
+            ScreenshotToolbarButton(systemImage: "circle", help: "圆形") {
+                onAction(.annotate(.circle))
+            }
+            ScreenshotToolbarButton(systemImage: "character.book.closed", help: "翻译") {
+                onAction(.translate)
+            }
+            ScreenshotToolbarButton(systemImage: "doc.on.doc", help: "复制") {
+                onAction(.copy)
+            }
+            ScreenshotToolbarButton(systemImage: "square.and.arrow.down", help: "保存图片") {
+                onAction(.save)
+            }
+            ScreenshotToolbarDivider()
+            ScreenshotToolbarButton(systemImage: "checkmark", help: "完成") {
+                onAction(.finish)
+            }
+            ScreenshotToolbarButton(systemImage: "xmark", help: "关闭", action: onClose)
+        }
     }
 }
