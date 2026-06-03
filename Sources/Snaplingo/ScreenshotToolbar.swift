@@ -49,36 +49,28 @@ struct ScreenshotToolbar: View {
             ScreenshotToolbarButton(systemImage: "checkmark", help: "完成") {
                 state.finish()
             }
-            ScreenshotToolbarButton(systemImage: "xmark", help: "关闭", action: state.close)
+            ScreenshotToolbarButton(systemImage: "xmark", help: "关闭") {
+                state.close()
+            }
             if !state.status.isEmpty {
-                Image(systemName: statusSystemImage)
+                let icon = statusIcon
+                Image(systemName: icon.systemImage)
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(statusColor)
+                    .foregroundStyle(icon.color)
                     .frame(width: 22, height: 34)
                     .help(state.status)
             }
         }
     }
 
-    private var statusSystemImage: String {
+    private var statusIcon: (systemImage: String, color: Color) {
         switch state.statusKind {
         case .failure:
-            "exclamationmark.circle.fill"
+            ("exclamationmark.circle.fill", .red)
         case .info:
-            "info.circle.fill"
+            ("info.circle.fill", .blue)
         case .success, nil:
-            "checkmark.circle.fill"
-        }
-    }
-
-    private var statusColor: Color {
-        switch state.statusKind {
-        case .failure:
-            .red
-        case .info:
-            .blue
-        case .success, nil:
-            .green
+            ("checkmark.circle.fill", .green)
         }
     }
 }
@@ -103,7 +95,7 @@ struct ScreenshotToolbarState {
     ) -> ScreenshotToolbarState {
         ScreenshotToolbarState(
             selectTool: { onAction(.annotate($0)) },
-            undo: {},
+            undo: {}, // 截图选择模式下无文档可撤销
             toggleTranslation: { onAction(.translate) },
             save: { onAction(.save) },
             finish: { onAction(.finish) },
@@ -139,6 +131,8 @@ struct ScreenshotToolbarState {
 }
 
 enum ScreenshotToolbarLayout {
+    static let toolbarHeight: CGFloat = 50
+    static let maxToolbarWidth: CGFloat = 430
     private static let spacing: CGFloat = 8
 
     static func frame(near screenshotRect: CGRect, visibleFrame: CGRect, toolbarSize: CGSize) -> CGRect {
@@ -207,6 +201,7 @@ struct ScreenshotToolbarDivider: View {
         Divider()
             .frame(height: 20)
             .padding(.horizontal, 2)
+            .accessibilityHidden(true)
     }
 }
 

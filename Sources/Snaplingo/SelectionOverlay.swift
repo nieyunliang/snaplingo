@@ -345,7 +345,7 @@ final class SelectionOverlayView: NSView {
         )
         let screen = NSScreen.screens.first(where: { $0.frame.intersects(screenSelection) }) ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else { return }
-        let toolbarSize = CGSize(width: min(430, visibleFrame.width), height: 50)
+        let toolbarSize = CGSize(width: min(ScreenshotToolbarLayout.maxToolbarWidth, visibleFrame.width), height: ScreenshotToolbarLayout.toolbarHeight)
         let screenToolbarFrame = ScreenshotToolbarLayout.frame(
             near: screenSelection,
             visibleFrame: visibleFrame,

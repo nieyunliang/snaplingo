@@ -47,6 +47,68 @@ final class GeometryTests: XCTestCase {
         XCTAssertFalse(toolbar.intersects(selection))
     }
 
+    func testScreenshotToolbarStaysInsideVisibleFrameWhenSelectionAtRightEdge() {
+        let selection = CGRect(x: 1300, y: 100, width: 100, height: 100)
+        let toolbar = ScreenshotToolbarLayout.frame(
+            near: selection,
+            visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+            toolbarSize: CGSize(width: 314, height: 50)
+        )
+
+        // Toolbar goes above the selection when right edge is tight
+        XCTAssertEqual(toolbar, CGRect(x: 1126, y: 42, width: 314, height: 50))
+        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1440, height: 900).contains(toolbar))
+        XCTAssertFalse(toolbar.intersects(selection))
+    }
+
+    func testScreenshotToolbarStaysInsideVisibleFrameWhenSelectionAtBottom() {
+        let selection = CGRect(x: 200, y: 800, width: 200, height: 80)
+        let toolbar = ScreenshotToolbarLayout.frame(
+            near: selection,
+            visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+            toolbarSize: CGSize(width: 314, height: 50)
+        )
+
+        // Toolbar goes above the selection when bottom space is tight
+        XCTAssertEqual(toolbar, CGRect(x: 143, y: 742, width: 314, height: 50))
+        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1440, height: 900).contains(toolbar))
+        XCTAssertFalse(toolbar.intersects(selection))
+    }
+
+    func testScreenshotToolbarClampsToLeftEdgeWhenSelectionAtLeftEdge() {
+        let selection = CGRect(x: 0, y: 100, width: 100, height: 100)
+        let toolbar = ScreenshotToolbarLayout.frame(
+            near: selection,
+            visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+            toolbarSize: CGSize(width: 314, height: 50)
+        )
+
+        // Toolbar goes above and is clamped to the left edge (x = visibleFrame.minX)
+        XCTAssertEqual(toolbar, CGRect(x: 0, y: 42, width: 314, height: 50))
+        XCTAssertTrue(CGRect(x: 0, y: 0, width: 1440, height: 900).contains(toolbar))
+        XCTAssertFalse(toolbar.intersects(selection))
+    }
+
+    func testScreenshotToolbarFallsBackToVisibleCandidatesWhenNoNaturalPositionFits() {
+        // Selection nearly fills the visible frame, so none of the four natural
+        // toolbar positions (above, below, left, right) can fully contain the
+        // toolbar. The code falls back to visibleCandidates — toolbar pinned
+        // to each visible-frame edge — and picks the one with the least overlap
+        // with the selection.
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let selection = CGRect(x: 20, y: 20, width: 1380, height: 860)
+        let toolbar = ScreenshotToolbarLayout.frame(
+            near: selection,
+            visibleFrame: visibleFrame,
+            toolbarSize: CGSize(width: 314, height: 50)
+        )
+
+        // Both top-edge and bottom-edge candidates have the same minimal
+        // intersection area (9420); stable min picks the first (top).
+        XCTAssertEqual(toolbar, CGRect(x: 553, y: 0, width: 314, height: 50))
+        XCTAssertTrue(visibleFrame.contains(toolbar))
+    }
+
     func testCaptureCoordinateConverterHandlesDisplaysAboveAndBelowPrimaryScreen() {
         let primary = CGRect(x: 0, y: 0, width: 1440, height: 900)
 
