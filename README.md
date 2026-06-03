@@ -1,20 +1,20 @@
 # Snaplingo
 
-Snaplingo is a native macOS menu bar screenshot translator built from the development document in `snaplingo-dev-doc.md`.
+Snaplingo is a native macOS menu bar app that captures screen regions or windows, then overlays Chinese translations in an in-place screenshot editor using on-demand Vision OCR.
 
 ## What Is Implemented
 
 - Menu bar app shell.
 - Unified `Option + A` screenshot shortcut.
 - Screenshot overlay with mouse magnifier, drag-to-capture regions, click-to-capture highlighted windows, and `Esc` cancel.
-- In-place screenshot editor with arrow, rectangle, and circle annotations, undo, inline Chinese translation, copy, and close actions.
+- In-place screenshot editor with arrow, rectangle, and circle annotations, undo, inline Chinese translation, copy, PNG save, finish, and close actions.
 - Inline translation replaces foreign-language OCR blocks inside the image with readable Chinese overlays.
 - Screen recording permission check and settings shortcut.
 - Vision OCR with configurable recognition languages.
-- Offline translation MVP, glossary prompt injection, and translation memory.
-- OpenAI-compatible translation with Simplified Chinese output and style settings.
+- Offline dictionary translation, glossary support, and translation memory.
+- DeepSeek-compatible Chat Completions translation with Simplified Chinese output and style settings.
 - API key storage in local app preferences.
-- Captured images stay in memory and can be copied to the clipboard without creating screenshot files.
+- Captured images stay in memory unless the user explicitly saves a PNG from the in-place editor.
 - Launch-at-login toggle through `SMAppService`.
 
 ## Run
@@ -50,10 +50,6 @@ An ad-hoc signature identifies one specific build. After replacing an installed
 ad-hoc build, macOS may still display `Snaplingo` as enabled under Screen
 Recording while requiring permission to be granted again for the new build.
 
-## Docs
-
-- [功能文档](docs/功能文档.md)
-
 ## Check
 
 ```bash
@@ -68,6 +64,6 @@ bash -n scripts/build-dmg.sh
 - macOS must grant Screen Recording permission before screenshots can be captured.
 - After granting Screen Recording permission to `Snaplingo`, restart the app once before capturing again.
 - Screenshot translation is triggered manually from the in-place toolbar and always renders Chinese inside the captured image.
-- Translation requires an API key in Settings.
+- DeepSeek translation requires an API key in Settings. Offline dictionary translation does not.
 - `swift test` runs the XCTest suite locally.
 - The capture backend uses ScreenCaptureKit where available. Automated screen capture smoke tests still need a permission-gated harness because macOS Screen Recording consent cannot be granted headlessly.
