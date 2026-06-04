@@ -136,6 +136,49 @@ final class GeometryTests: XCTestCase {
         XCTAssertTrue(CaptureGestureResolver.isRegionDrag(from: CGPoint(x: 10, y: 10), to: CGPoint(x: 15, y: 10)))
     }
 
+    func testSelectionOverlayInteractionStateKeepsWindowCandidateUntilCompletion() {
+        let candidate = WindowCaptureCandidate(
+            id: 42,
+            frame: CGRect(x: 20, y: 20, width: 40, height: 30)
+        )
+        var state = SelectionOverlayInteractionState()
+
+        XCTAssertTrue(state.endDrag(
+            at: CGPoint(x: 30, y: 60),
+            candidate: candidate,
+            candidateRect: CGRect(x: 20, y: 20, width: 40, height: 30)
+        ))
+
+        XCTAssertEqual(state.selection, CGRect(x: 20, y: 20, width: 40, height: 30))
+        XCTAssertEqual(state.pendingWindowCandidate?.id, 42)
+        XCTAssertTrue(state.markCompletingIfPossible())
+        XCTAssertFalse(state.canHandleEvents)
+        XCTAssertFalse(state.markCompletingIfPossible())
+    }
+
+    func testSelectionOverlayInteractionStateConvertsWindowCandidateToRegionAfterAdjustment() {
+        let candidate = WindowCaptureCandidate(
+            id: 42,
+            frame: CGRect(x: 20, y: 20, width: 40, height: 30)
+        )
+        var state = SelectionOverlayInteractionState()
+
+        state.endDrag(
+            at: CGPoint(x: 30, y: 60),
+            candidate: candidate,
+            candidateRect: CGRect(x: 20, y: 20, width: 40, height: 30)
+        )
+        XCTAssertFalse(state.beginDrag(at: CGPoint(x: 30, y: 30)))
+        XCTAssertTrue(state.updateDrag(
+            to: CGPoint(x: 40, y: 30),
+            bounds: CGRect(x: 0, y: 0, width: 100, height: 100),
+            threshold: 4
+        ))
+
+        XCTAssertNil(state.pendingWindowCandidate)
+        XCTAssertEqual(state.selection, CGRect(x: 30, y: 20, width: 40, height: 30))
+    }
+
     @MainActor
     func testSelectionOverlayAcceptsTheFirstMouseEvent() {
         let view = SelectionOverlayView(

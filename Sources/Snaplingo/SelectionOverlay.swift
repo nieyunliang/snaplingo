@@ -55,11 +55,15 @@ final class SelectionOverlayController {
             return
         }
 
-        for window in windows {
-            window.ignoresMouseEvents = true
-        }
+        keepOverlayVisibleForCapture()
         completion(request) { [weak self] in
             self?.dismissWindows()
+        }
+    }
+
+    private func keepOverlayVisibleForCapture() {
+        for window in windows {
+            window.ignoresMouseEvents = true
         }
     }
 
@@ -115,17 +119,12 @@ final class SelectionOverlayView: NSView {
     private let completion: (CaptureRequest?) -> Void
     private var trackingArea: NSTrackingArea?
     private let selectionBorderView = SelectionBorderView()
-    private var hovered: WindowCaptureCandidate?
-    private var mouseLocation: CGPoint?
-    private var selection: CGRect? {
+    private var interaction = SelectionOverlayInteractionState() {
         didSet {
-            selectionBorderView.selection = selection
+            selectionBorderView.selection = interaction.selection
         }
     }
-    private var dragMode: SelectionDragMode?
-    private var pendingWindowCandidate: WindowCaptureCandidate?
     private let toolbarHost = SelectionToolbarHost()
-    private var isCompleting = false
 
     init(
         frame frameRect: CGRect,
@@ -180,92 +179,51 @@ final class SelectionOverlayView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard !isCompleting else { return }
+        guard interaction.canHandleEvents else { return }
         let point = clamped(convert(event.locationInWindow, from: nil))
-        mouseLocation = point
-        hovered = selection == nil ? candidate(at: point) : nil
+        interaction.updateHover(at: point, candidate: candidate(at: point))
         needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard !isCompleting else { return }
+        guard interaction.canHandleEvents else { return }
         let point = clamped(convert(event.locationInWindow, from: nil))
-        mouseLocation = point
-        hovered = nil
-        if let selection,
-           let handle = SelectionGeometry.hitHandle(in: selection, point: point) {
-            dragMode = .adjusting(selection: selection, handle: handle, startPoint: point)
-        } else {
-            dragMode = .drawing(startPoint: point)
-            selection = nil
-            pendingWindowCandidate = nil
+        if interaction.beginDrag(at: point) {
             hidePreCaptureToolbar()
         }
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !isCompleting else { return }
-        guard let dragMode else {
+        guard interaction.canHandleEvents else { return }
+        guard interaction.isDragging else {
             return
         }
         let point = clamped(convert(event.locationInWindow, from: nil))
-        mouseLocation = point
-        switch dragMode {
-        case .drawing(let startPoint):
-            if CaptureGestureResolver.isRegionDrag(from: startPoint, to: point, threshold: Self.dragThreshold) {
-                selection = SelectionGeometry.normalizedRect(from: startPoint, to: point)
-                pendingWindowCandidate = nil
-            }
-        case .adjusting(let initialSelection, let handle, let startPoint):
-            if handle == .inside {
-                selection = SelectionGeometry.movedRect(
-                    initialSelection,
-                    by: CGPoint(x: point.x - startPoint.x, y: point.y - startPoint.y),
-                    bounds: bounds
-                )
-            } else {
-                selection = SelectionGeometry.resizedRect(
-                    initialSelection,
-                    dragging: handle,
-                    to: point,
-                    bounds: bounds
-                )
-            }
-            hovered = nil
-            pendingWindowCandidate = nil
-            if toolbarHost.isVisible, let selection {
-                toolbarHost.updatePosition(selection: selection, screenFrame: screenFrame)
-            }
+        let shouldUpdateToolbar = interaction.updateDrag(
+            to: point,
+            bounds: bounds,
+            threshold: Self.dragThreshold
+        )
+        if shouldUpdateToolbar, toolbarHost.isVisible, let selection = interaction.selection {
+            toolbarHost.updatePosition(selection: selection, screenFrame: screenFrame)
         }
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard !isCompleting else { return }
+        guard interaction.canHandleEvents else { return }
         let point = clamped(convert(event.locationInWindow, from: nil))
-        mouseLocation = point
-        defer {
-            dragMode = nil
-            needsDisplay = true
-        }
-
-        if let selection, SelectionGeometry.isValid(selection) {
+        let candidate = candidate(at: point)
+        let candidateRect = candidate.map { localRect(for: $0.appKitFrame(primaryFrame: primaryFrame)) }
+        if interaction.endDrag(at: point, candidate: candidate, candidateRect: candidateRect) {
             showPreCaptureToolbar()
-            return
         }
-
-        if let candidate = candidate(at: point) {
-            let rect = localRect(for: candidate.appKitFrame(primaryFrame: primaryFrame))
-            selection = rect
-            pendingWindowCandidate = candidate
-            showPreCaptureToolbar()
-            return
-        }
+        needsDisplay = true
     }
 
     override func keyDown(with event: NSEvent) {
-        guard !isCompleting else { return }
+        guard interaction.canHandleEvents else { return }
         if event.keyCode == 53 {
             completion(nil)
         } else {
@@ -276,12 +234,12 @@ final class SelectionOverlayView: NSView {
     override func draw(_ dirtyRect: CGRect) {
         SelectionOverlayRenderer.draw(
             dirtyRect,
-            selection: selection,
-            mouseLocation: mouseLocation,
+            selection: interaction.selection,
+            mouseLocation: interaction.mouseLocation,
             snapshot: snapshot,
             bounds: bounds
         )
-        guard selection == nil, let hovered else {
+        guard interaction.selection == nil, let hovered = interaction.hovered else {
             return
         }
         let rect = localRect(for: hovered.appKitFrame(primaryFrame: primaryFrame))
@@ -311,14 +269,14 @@ final class SelectionOverlayView: NSView {
     }
 
     func performAction(_ action: CaptureAction) {
-        guard !isCompleting else { return }
-        guard let selection, SelectionGeometry.isValid(selection) else { return }
-        isCompleting = true
+        guard interaction.markCompletingIfPossible() else { return }
         window?.ignoresMouseEvents = true
-        if let candidate = pendingWindowCandidate {
+        if let candidate = interaction.pendingWindowCandidate {
             completion(CaptureRequest(selection: .window(candidate), action: action))
-        } else {
+        } else if let selection = interaction.selection {
             completeRegion(selection, action: action)
+        } else {
+            assertionFailure("A valid selection is required before completing capture.")
         }
     }
 
@@ -333,7 +291,7 @@ final class SelectionOverlayView: NSView {
     }
 
     private func showPreCaptureToolbar() {
-        guard let selection else { return }
+        guard let selection = interaction.selection else { return }
         toolbarHost.show(
             in: self,
             selection: selection,
@@ -349,9 +307,116 @@ final class SelectionOverlayView: NSView {
 
     private func hidePreCaptureToolbar() {
         toolbarHost.hide()
-        pendingWindowCandidate = nil
-        selection = nil
+        interaction.clearSelection()
         needsDisplay = true
+    }
+}
+
+struct SelectionOverlayInteractionState {
+    private(set) var hovered: WindowCaptureCandidate?
+    private(set) var mouseLocation: CGPoint?
+    private(set) var selection: CGRect?
+    private(set) var pendingWindowCandidate: WindowCaptureCandidate?
+    private(set) var isCompleting = false
+    private var dragMode: SelectionDragMode?
+
+    var canHandleEvents: Bool { !isCompleting }
+    var isDragging: Bool { dragMode != nil }
+
+    mutating func updateHover(at point: CGPoint, candidate: WindowCaptureCandidate?) {
+        mouseLocation = point
+        hovered = selection == nil ? candidate : nil
+    }
+
+    @discardableResult
+    mutating func beginDrag(at point: CGPoint) -> Bool {
+        mouseLocation = point
+        hovered = nil
+
+        if let selection,
+           let handle = SelectionGeometry.hitHandle(in: selection, point: point) {
+            dragMode = .adjusting(selection: selection, handle: handle, startPoint: point)
+            return false
+        }
+
+        dragMode = .drawing(startPoint: point)
+        clearSelection()
+        return true
+    }
+
+    @discardableResult
+    mutating func updateDrag(to point: CGPoint, bounds: CGRect, threshold: CGFloat) -> Bool {
+        mouseLocation = point
+
+        switch dragMode {
+        case .drawing(let startPoint):
+            guard CaptureGestureResolver.isRegionDrag(from: startPoint, to: point, threshold: threshold) else {
+                return false
+            }
+            selection = SelectionGeometry.normalizedRect(from: startPoint, to: point)
+            pendingWindowCandidate = nil
+            return false
+        case .adjusting(let initialSelection, let handle, let startPoint):
+            if handle == .inside {
+                selection = SelectionGeometry.movedRect(
+                    initialSelection,
+                    by: CGPoint(x: point.x - startPoint.x, y: point.y - startPoint.y),
+                    bounds: bounds
+                )
+            } else {
+                selection = SelectionGeometry.resizedRect(
+                    initialSelection,
+                    dragging: handle,
+                    to: point,
+                    bounds: bounds
+                )
+            }
+            hovered = nil
+            pendingWindowCandidate = nil
+            return true
+        case nil:
+            return false
+        }
+    }
+
+    @discardableResult
+    mutating func endDrag(
+        at point: CGPoint,
+        candidate: WindowCaptureCandidate?,
+        candidateRect: CGRect?
+    ) -> Bool {
+        mouseLocation = point
+        defer { dragMode = nil }
+
+        if let selection, SelectionGeometry.isValid(selection) {
+            return true
+        }
+
+        if let candidate, let candidateRect {
+            selection = candidateRect
+            pendingWindowCandidate = candidate
+            return true
+        }
+
+        return false
+    }
+
+    @discardableResult
+    mutating func markCompletingIfPossible() -> Bool {
+        guard !isCompleting,
+              let selection,
+              SelectionGeometry.isValid(selection)
+        else {
+            return false
+        }
+
+        isCompleting = true
+        return true
+    }
+
+    mutating func clearSelection() {
+        selection = nil
+        pendingWindowCandidate = nil
     }
 }
 
