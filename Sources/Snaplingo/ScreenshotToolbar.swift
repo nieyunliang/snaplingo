@@ -80,40 +80,94 @@ struct ScreenshotToolbar: View {
     }
 }
 
-struct ScreenshotToolbarState {
-    var selectedTool: AnnotationTool?
-    var canUndo = false
-    var isTranslating = false
-    var isTranslationVisible = false
-    var status = ""
-    var statusKind: InlineCaptureStatusKind?
-    let selectTool: (AnnotationTool) -> Void
-    let undo: () -> Void
-    let toggleTranslation: () -> Void
-    let save: () -> Void
-    let finish: () -> Void
-    let close: () -> Void
+enum ScreenshotToolbarState {
+    struct EditingState {
+        var selectedTool: AnnotationTool?
+        var canUndo = false
+        var isTranslating = false
+        var isTranslationVisible = false
+        var status = ""
+        var statusKind: InlineCaptureStatusKind?
+        let selectTool: (AnnotationTool) -> Void
+        let undo: () -> Void
+        let toggleTranslation: () -> Void
+        let save: () -> Void
+        let finish: () -> Void
+        let close: () -> Void
+    }
 
-    static func selecting(
-        onAction: @escaping (CaptureAction) -> Void,
-        onClose: @escaping () -> Void
-    ) -> ScreenshotToolbarState {
-        ScreenshotToolbarState(
-            selectTool: { onAction(.annotate($0)) },
-            undo: {}, // 截图选择模式下无文档可撤销
-            toggleTranslation: { onAction(.translate) },
-            save: { onAction(.save) },
-            finish: { onAction(.finish) },
-            close: onClose
-        )
+    case selecting(
+        onAction: (CaptureAction) -> Void,
+        onClose: () -> Void
+    )
+    case editing(EditingState)
+
+    var selectedTool: AnnotationTool? {
+        if case .editing(let state) = self { return state.selectedTool }
+        return nil
+    }
+    var canUndo: Bool {
+        if case .editing(let state) = self { return state.canUndo }
+        return false
+    }
+    var isTranslating: Bool {
+        if case .editing(let state) = self { return state.isTranslating }
+        return false
+    }
+    var isTranslationVisible: Bool {
+        if case .editing(let state) = self { return state.isTranslationVisible }
+        return false
+    }
+    var status: String {
+        if case .editing(let state) = self { return state.status }
+        return ""
+    }
+    var statusKind: InlineCaptureStatusKind? {
+        if case .editing(let state) = self { return state.statusKind }
+        return nil
+    }
+
+    var selectTool: (AnnotationTool) -> Void {
+        switch self {
+        case .selecting(let onAction, _): return { onAction(.annotate($0)) }
+        case .editing(let state): return state.selectTool
+        }
+    }
+    var undo: () -> Void {
+        if case .editing(let state) = self { return state.undo }
+        return {}
+    }
+    var toggleTranslation: () -> Void {
+        switch self {
+        case .selecting(let onAction, _): return { onAction(.translate) }
+        case .editing(let state): return state.toggleTranslation
+        }
+    }
+    var save: () -> Void {
+        switch self {
+        case .selecting(let onAction, _): return { onAction(.save) }
+        case .editing(let state): return state.save
+        }
+    }
+    var finish: () -> Void {
+        switch self {
+        case .selecting(let onAction, _): return { onAction(.finish) }
+        case .editing(let state): return state.finish
+        }
+    }
+    var close: () -> Void {
+        switch self {
+        case .selecting(_, let onClose): return onClose
+        case .editing(let state): return state.close
+        }
     }
 
     @MainActor
-    static func editing(
+    static func makeEditing(
         document: InlineCaptureDocument,
         close: @escaping () -> Void
     ) -> ScreenshotToolbarState {
-        ScreenshotToolbarState(
+        .editing(EditingState(
             selectedTool: document.drawingTool,
             canUndo: document.canUndo,
             isTranslating: document.isTranslating,
@@ -122,16 +176,14 @@ struct ScreenshotToolbarState {
             statusKind: document.statusKind,
             selectTool: { document.toggleDrawingTool($0) },
             undo: { document.undo() },
-            toggleTranslation: {
-                Task { await document.toggleTranslation() }
-            },
+            toggleTranslation: { document.triggerTranslation() },
             save: { document.save() },
             finish: {
                 document.copy()
                 close()
             },
             close: close
-        )
+        ))
     }
 }
 

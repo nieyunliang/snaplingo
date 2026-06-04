@@ -14,6 +14,7 @@ final class AppCoordinator {
     private let hotkeyService = HotkeyService()
 
     private var menuBarController: MenuBarController?
+    private var isCapturing = false
 
     func start() {
         menuBarController = MenuBarController(coordinator: self)
@@ -23,21 +24,28 @@ final class AppCoordinator {
     }
 
     func capture() {
+        guard !isCapturing else { return }
         guard PermissionGuide.hasScreenRecordingPermission else {
             presentScreenRecordingPermissionGuide()
             return
         }
+        isCapturing = true
         Task { @MainActor in
             do {
                 let candidates = try await captureService.listCapturableWindows()
-                overlayController.beginSelection(candidates: candidates) { [weak self] request, dismissSelection in
+                let didBeginSelection = overlayController.beginSelection(candidates: candidates) { [weak self] request, dismissSelection in
                     guard let self, let request else {
                         dismissSelection()
+                        self?.isCapturing = false
                         return
                     }
                     self.capture(request: request, dismissSelection: dismissSelection)
                 }
+                if !didBeginSelection {
+                    isCapturing = false
+                }
             } catch {
+                isCapturing = false
                 presentError(error)
             }
         }
@@ -45,6 +53,7 @@ final class AppCoordinator {
 
     private func capture(request: CaptureRequest, dismissSelection: @escaping () -> Void) {
         Task { @MainActor in
+            defer { isCapturing = false }
             do {
                 let screenshot = try await captureService.capture(
                     selection: request.selection,

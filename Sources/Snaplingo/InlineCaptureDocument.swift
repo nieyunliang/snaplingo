@@ -10,13 +10,9 @@ final class InlineCaptureDocument: ObservableObject {
     @Published private(set) var status = ""
     @Published private(set) var statusKind: InlineCaptureStatusKind?
 
-    private let settings: AppSettings
-    private let ocrService: OCRServicing
-    private let translationService: InlineTranslationService
     private let clipboard: ClipboardServicing
+    private let translationFlow: TranslationFlowController
     private var dragStart: CGPoint?
-    private var cachedOCRResult: OCRResult?
-    private var cachedTranslationPatches: [InlineTranslationPatch]?
     private var cancellables: Set<AnyCancellable> = []
 
     init(
@@ -33,17 +29,28 @@ final class InlineCaptureDocument: ObservableObject {
             screenshot: screenshot,
             initialDrawingTool: initialDrawingTool
         )
-        self.settings = settings
-        self.ocrService = ocrService
-        self.translationService = translationService
         self.clipboard = clipboard
+        self.translationFlow = TranslationFlowController(
+            screenshot: screenshot,
+            settings: settings,
+            ocrService: ocrService,
+            translationService: translationService,
+            canvasModel: canvasModel
+        )
         canvasModel.objectWillChange
             .sink { [weak self] _ in
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+        translationFlow.onStateChange = { [weak self] in
+            guard let self else { return }
+            self.isTranslating = self.translationFlow.isTranslating
+            self.isTranslationVisible = self.translationFlow.isTranslationVisible
+            self.status = self.translationFlow.status
+            self.statusKind = self.translationFlow.statusKind
+        }
         if startsTranslation {
-            Task { await toggleTranslation() }
+            triggerTranslation()
         }
     }
 
@@ -83,21 +90,11 @@ final class InlineCaptureDocument: ObservableObject {
     }
 
     func toggleTranslation() async {
-        guard !isTranslating else { return }
-        if let cachedTranslationPatches {
-            if isTranslationVisible {
-                canvasModel.clearPatches()
-                isTranslationVisible = false
-                setStatus("已隐藏译文", kind: .success)
-            } else {
-                canvasModel.setPatches(cachedTranslationPatches)
-                isTranslationVisible = true
-                setStatus(translationVisibleStatus(for: cachedTranslationPatches), kind: .success)
-            }
-            return
-        }
+        await translationFlow.toggleTranslation()
+    }
 
-        await translate()
+    func triggerTranslation() {
+        translationFlow.triggerTranslation()
     }
 
     func copy() {
@@ -119,47 +116,9 @@ final class InlineCaptureDocument: ObservableObject {
         canvasModel.renderedImageForExport()
     }
 
-    private func translate() async {
-        guard !isTranslating else { return }
-        isTranslating = true
-        setStatus("正在识别文字...", kind: .info)
-        defer { isTranslating = false }
-        do {
-            let ocr = try await recognizeText()
-            setStatus("正在请求 AI 翻译...", kind: .info)
-            let translationStartedAt = PerformanceMetrics.start()
-            let patches = try await translationService.translate(blocks: ocr.blocks, imageSize: screenshot.image.size, settings: settings)
-            PerformanceMetrics.log("inline_translation", since: translationStartedAt, metadata: "patches=\(patches.count)")
-            setStatus("正在覆盖译文...", kind: .info)
-            cachedTranslationPatches = patches
-            canvasModel.setPatches(patches)
-            isTranslationVisible = true
-            setStatus(translationVisibleStatus(for: patches), kind: .success)
-        } catch {
-            setStatus(error.localizedDescription, kind: .failure)
-        }
-    }
-
     private func setStatus(_ message: String, kind: InlineCaptureStatusKind) {
         status = message
         statusKind = kind
-    }
-
-    private func translationVisibleStatus(for patches: [InlineTranslationPatch]) -> String {
-        patches.isEmpty ? "未发现需要翻译的外语" : "已替换 \(patches.count) 处文字"
-    }
-
-    private func recognizeText() async throws -> OCRResult {
-        let startedAt = PerformanceMetrics.start()
-        if let cachedOCRResult {
-            PerformanceMetrics.log("inline_ocr_cache_hit", since: startedAt, metadata: "blocks=\(cachedOCRResult.blocks.count)")
-            return cachedOCRResult
-        }
-
-        let result = try await ocrService.recognize(image: screenshot.image, languages: settings.ocrLanguages)
-        cachedOCRResult = result
-        PerformanceMetrics.log("inline_ocr", since: startedAt, metadata: "blocks=\(result.blocks.count)")
-        return result
     }
 
     private func makeAnnotation(tool: AnnotationTool, from start: CGPoint, to end: CGPoint) -> AnnotationItem {

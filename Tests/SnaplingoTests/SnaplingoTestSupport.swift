@@ -122,6 +122,33 @@ final class OCRServiceStub: OCRServicing {
     }
 }
 
+@MainActor
+final class CancellableOCRServiceStub: OCRServicing {
+    private(set) var requestCount = 0
+    private var continuation: CheckedContinuation<Void, Never>?
+    private let result: OCRResult
+
+    init(result: OCRResult) {
+        self.result = result
+    }
+
+    func recognize(image: NSImage, languages: [String]) async throws -> OCRResult {
+        requestCount += 1
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+        if Task.isCancelled {
+            throw CancellationError()
+        }
+        return result
+    }
+
+    func resume() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 struct ClipboardServiceStub: ClipboardServicing {
     func copyImage(_ image: NSImage) {}
 }

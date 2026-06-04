@@ -203,15 +203,60 @@ final class TranslationTests: XCTestCase {
 
         await document.toggleTranslation()
         XCTAssertTrue(document.isTranslationVisible)
+        XCTAssertFalse(document.isTranslating)
         XCTAssertEqual(document.patches.map(\.translatedText), ["你好"])
 
         await document.toggleTranslation()
         XCTAssertFalse(document.isTranslationVisible)
+        XCTAssertFalse(document.isTranslating)
         XCTAssertTrue(document.patches.isEmpty)
 
         await document.toggleTranslation()
 
         XCTAssertEqual(ocrService.requestCount, 1)
+        XCTAssertTrue(document.isTranslationVisible)
+        XCTAssertFalse(document.isTranslating)
+        XCTAssertEqual(document.patches.map(\.translatedText), ["你好"])
+    }
+
+    @MainActor
+    func testInlineCaptureDocumentIgnoresRepeatedTriggerWhileTranslating() async {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "SnaplingoTests-\(UUID().uuidString)")!)
+        settings.translationProvider = .offline
+        let ocrService = CancellableOCRServiceStub(
+            result: OCRResult(
+                text: "Hello",
+                confidence: 1,
+                blocks: [
+                    OCRTextBlock(text: "Hello", boundingBox: CGRect(x: 0, y: 0, width: 1, height: 1), confidence: 1)
+                ]
+            )
+        )
+        let document = InlineCaptureDocument(
+            screenshot: ScreenshotResult(
+                image: makeSolidImage(.white),
+                screenRect: CGRect(x: 0, y: 0, width: 20, height: 20)
+            ),
+            settings: settings,
+            ocrService: ocrService,
+            translationService: InlineTranslationService(),
+            clipboard: ClipboardServiceStub()
+        )
+
+        document.triggerTranslation()
+        for _ in 0 ..< 10 where ocrService.requestCount == 0 {
+            await Task.yield()
+        }
+        XCTAssertTrue(document.isTranslating)
+
+        document.triggerTranslation()
+        ocrService.resume()
+        for _ in 0 ..< 10 where document.isTranslating {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(ocrService.requestCount, 1)
+        XCTAssertFalse(document.isTranslating)
         XCTAssertTrue(document.isTranslationVisible)
         XCTAssertEqual(document.patches.map(\.translatedText), ["你好"])
     }
@@ -250,6 +295,7 @@ final class TranslationTests: XCTestCase {
 
         XCTAssertEqual(httpClient.requests.count, 1)
         XCTAssertTrue(document.isTranslationVisible)
+        XCTAssertFalse(document.isTranslating)
         XCTAssertEqual(document.patches.map(\.translatedText), ["你好"])
     }
 
@@ -282,6 +328,7 @@ final class TranslationTests: XCTestCase {
         XCTAssertEqual(document.status, "请先在设置中配置 DeepSeek API Key。")
         XCTAssertEqual(document.statusKind, .failure)
         XCTAssertFalse(document.isTranslationVisible)
+        XCTAssertFalse(document.isTranslating)
     }
 
     @MainActor

@@ -17,7 +17,7 @@ struct InlineCaptureEditorView: View {
                 .frame(width: screenshotFrame.width, height: screenshotFrame.height)
                 .position(x: screenshotFrame.midX, y: screenshotFrame.midY)
 
-            ScreenshotToolbar(state: .editing(document: document, close: close))
+            ScreenshotToolbar(state: .makeEditing(document: document, close: close))
                 .frame(width: toolbarFrame.width, height: toolbarFrame.height)
                 .position(x: toolbarFrame.midX, y: toolbarFrame.midY)
         }

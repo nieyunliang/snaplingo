@@ -10,7 +10,10 @@ final class SelectionOverlayController {
     func beginSelection(
         candidates: [WindowCaptureCandidate],
         completion: @escaping (CaptureRequest?, @escaping () -> Void) -> Void
-    ) {
+    ) -> Bool {
+        guard windows.isEmpty else {
+            return false
+        }
         self.completion = completion
         let primaryFrame = NSScreen.primaryFrame
         windows = NSScreen.screens.compactMap { screen in
@@ -33,6 +36,7 @@ final class SelectionOverlayController {
             window.makeKeyAndOrderFront(nil)
         }
         NSCursor.crosshair.push()
+        return true
     }
 
     private func finish(_ request: CaptureRequest?) {
@@ -120,7 +124,7 @@ final class SelectionOverlayView: NSView {
     }
     private var dragMode: SelectionDragMode?
     private var pendingWindowCandidate: WindowCaptureCandidate?
-    private var toolbarHostingView: NSHostingView<ScreenshotToolbar>?
+    private let toolbarHost = SelectionToolbarHost()
     private var isCompleting = false
 
     init(
@@ -230,8 +234,8 @@ final class SelectionOverlayView: NSView {
             }
             hovered = nil
             pendingWindowCandidate = nil
-            if toolbarHostingView != nil {
-                updateToolbarPosition()
+            if toolbarHost.isVisible, let selection {
+                toolbarHost.updatePosition(selection: selection, screenFrame: screenFrame)
             }
         }
         needsDisplay = true
@@ -327,63 +331,27 @@ final class SelectionOverlayView: NSView {
             )
         )
     }
-}
 
-// MARK: - Pre-Capture Toolbar
-
-extension SelectionOverlayView {
-    fileprivate func showPreCaptureToolbar() {
-        guard toolbarHostingView == nil else {
-            updateToolbarPosition()
-            return
-        }
-        let toolbarView = ScreenshotToolbar(
-            state: .selecting(
-                onAction: { [weak self] action in
-                    self?.performAction(action)
-                },
-                onClose: { [weak self] in
-                    self?.completion(nil)
-                }
-            )
+    private func showPreCaptureToolbar() {
+        guard let selection else { return }
+        toolbarHost.show(
+            in: self,
+            selection: selection,
+            screenFrame: screenFrame,
+            onAction: { [weak self] action in
+                self?.performAction(action)
+            },
+            onClose: { [weak self] in
+                self?.completion(nil)
+            }
         )
-        let hostingView = NSHostingView(rootView: toolbarView)
-        addSubview(hostingView)
-        toolbarHostingView = hostingView
-        updateToolbarPosition()
     }
 
-    fileprivate func hidePreCaptureToolbar() {
-        toolbarHostingView?.removeFromSuperview()
-        toolbarHostingView = nil
+    private func hidePreCaptureToolbar() {
+        toolbarHost.hide()
         pendingWindowCandidate = nil
         selection = nil
         needsDisplay = true
-    }
-
-    fileprivate func updateToolbarPosition() {
-        guard let selection else { return }
-        let screenSelection = CGRect(
-            x: selection.minX + screenFrame.minX,
-            y: selection.minY + screenFrame.minY,
-            width: selection.width,
-            height: selection.height
-        )
-        let screen = NSScreen.screens.first(where: { $0.frame.intersects(screenSelection) }) ?? NSScreen.main
-        guard let visibleFrame = screen?.visibleFrame else { return }
-        let toolbarSize = ScreenshotToolbarLayout.size(fitting: visibleFrame)
-        let screenToolbarFrame = ScreenshotToolbarLayout.frame(
-            near: screenSelection,
-            visibleFrame: visibleFrame,
-            toolbarSize: toolbarSize
-        )
-        let localToolbarFrame = CGRect(
-            x: screenToolbarFrame.minX - screenFrame.minX,
-            y: screenToolbarFrame.minY - screenFrame.minY,
-            width: screenToolbarFrame.width,
-            height: screenToolbarFrame.height
-        )
-        toolbarHostingView?.frame = localToolbarFrame
     }
 }
 
